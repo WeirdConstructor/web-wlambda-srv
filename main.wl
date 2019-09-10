@@ -6,3 +6,9 @@
 !:global req = { !(method, path, data) = @;
     str:cat "foobar" method path data.x
 };
+
+db:connect_sqlite "xxx.sqlite";
+db:exec "CREATE TABLE xxx (name TEXT);";
+db:exec "INSERT INTO xxx VALUES('fooobar')";
+db:exec "INSERT INTO xxx VALUES(?)" "fofoe ewoif jwf w' fweiofj w";
+"SELECT * FROM xxx" | db:exec | displayln;

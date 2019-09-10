@@ -31,6 +31,74 @@ use wlambda::vval::VVal;
 use wlambda::prelude::create_wlamba_prelude;
 use wlambda::threads;
 
+struct WLContext {
+    db_con: Option<sqlite::Connection>,
+}
+
+fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal>) -> VVal {
+    let stmt = db.prepare(stmt_str.clone());
+    if let Err(e) = stmt {
+        return VVal::err_msg(
+            &format!("SQL parse error '{}': {}", stmt_str, e));
+    }
+    let mut stmt = stmt.unwrap();
+
+    for (i, b) in binds.iter().enumerate() {
+        if b.is_float() {
+            stmt.bind(i + 1, &sqlite::Value::Float(b.f()));
+        } else if b.is_int() {
+            stmt.bind(i + 1, &sqlite::Value::Integer(b.i()));
+        } else if let VVal::Byt(u) = b {
+            stmt.bind(i + 1, &sqlite::Value::Binary(u.borrow().clone()));
+        } else if let VVal::Nul = b {
+            stmt.bind(i + 1, &sqlite::Value::Null);
+        } else {
+            stmt.bind(i + 1, &sqlite::Value::String(b.s()));
+        }
+    }
+
+    let mut ret = VVal::Bol(true);
+    loop {
+        match stmt.next() {
+            Err(e) => {
+                return VVal::err_msg(
+                    &format!("SQL exec error on '{}': {}", stmt_str, e));
+            },
+            Ok(sqlite::State::Row) => {
+                if let VVal::Bol(_) = ret {
+                    ret = VVal::vec();
+                };
+
+                let row_vv = VVal::map();
+                for i in 0..stmt.count() {
+                    row_vv.set_key(
+                        &VVal::new_str(stmt.name(i)),
+                        match stmt.kind(i) {
+                            sqlite::Type::Integer =>
+                                VVal::Int(stmt.read::<i64>(i).unwrap()),
+                            sqlite::Type::Float =>
+                                VVal::Flt(stmt.read::<f64>(i).unwrap()),
+                            sqlite::Type::Binary => {
+                                VVal::new_byt(stmt.read::<Vec<u8>>(i).unwrap())
+                            },
+                            sqlite::Type::String => {
+                                VVal::new_str(&stmt.read::<String>(i).unwrap())
+                            },
+                            sqlite::Type::Null => VVal::Nul,
+                        });
+                }
+
+                ret.push(row_vv);
+            },
+            Ok(sqlite::State::Done) => {
+                break;
+            },
+        };
+    }
+
+    ret
+}
+
 fn start_wlambda_thread() -> threads::Sender {
     let mut msgh = threads::MsgHandle::new();
 
@@ -38,7 +106,49 @@ fn start_wlambda_thread() -> threads::Sender {
 
     std::thread::spawn(move || {
         let genv = create_wlamba_prelude();
-        let mut wl_eval_ctx = wlambda::compiler::EvalContext::new(genv);
+
+        genv.borrow_mut().add_func(
+            "db:connect_sqlite",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                let open_str = env.arg(0).s_raw();
+                env.with_user_do(|c: &mut WLContext| {
+                    match sqlite::open(open_str.clone()) {
+                        Ok(con) => {
+                            c.db_con = Some(con);
+                            Ok(VVal::Bol(true))
+                        },
+                        Err(e) => {
+                            Ok(VVal::err_msg(
+                                &format!("Couldn't open sqlite db '{}': {}", open_str, e)))
+                        }
+                    }
+                })
+            }, Some(1), Some(1));
+
+        genv.borrow_mut().add_func(
+            "db:exec",
+            |env: &mut wlambda::vval::Env, argc: usize| {
+                let stmt_str = env.arg(0).s_raw();
+                let mut binds = vec![];
+                for i in 1..argc {
+                    binds.push(env.arg(i).clone())
+                }
+
+                env.with_user_do(|c: &mut WLContext| {
+                    if let Some(ref mut db) = c.db_con {
+                        Ok(exec_sql_stmt(db, stmt_str.clone(), &binds))
+                    } else {
+                        Ok(VVal::err_msg("no db connection"))
+                    }
+                })
+            }, Some(1), None);
+
+        let mut wl_eval_ctx =
+            wlambda::compiler::EvalContext::new_with_user(
+                genv,
+                std::rc::Rc::new(
+                    std::cell::RefCell::new(
+                        WLContext { db_con: None })));
 
         match wl_eval_ctx.eval_file("main.wl") {
             Ok(_) => (),
