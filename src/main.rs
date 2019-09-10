@@ -262,7 +262,6 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
             return Box::new(res);
         },
         (&Method::GET, path) => {
-            println!("GET REQUEST: {}", path);
             let spath = String::from(path);
             let path = Path::new(path);
             if path.starts_with("/files/") {
@@ -284,6 +283,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
                     if let Some(extension) = as_path.extension() {
                         let mime = mime_for_ext(extension.to_str().unwrap());
+                        println!("MIME {:?} => {}", as_path, mime);
                         (*response.headers_mut()).insert(
                             HeaderName::from_static("content-type"),
                             HeaderValue::from_str(&mime).unwrap());
@@ -297,7 +297,9 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                     *response.status_mut() = StatusCode::NOT_FOUND;
                 }
             } else {
-                *response.body_mut() = get_response(format!("{:?}", method), spath, VVal::Nul);
+                *response.body_mut() =
+                    get_response(
+                        format!("{:?}", method), spath, VVal::Nul);
 
             }
         },
