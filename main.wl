@@ -1,3 +1,3 @@
 !:global req = { !(method, path, data) = @;
-    str:cat "foobar" method path
+    str:cat "foobar" method path data.x
 };

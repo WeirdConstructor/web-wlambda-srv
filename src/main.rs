@@ -14,7 +14,6 @@ use futures::future::lazy;
 //use tokio::timer::Interval;
 //use tokio::io;
 
-use serde_json::{Value};
 use hyper::{Body, Request, Response, Server, Method, StatusCode};
 use hyper::rt::{Future, Stream};
 use hyper::service::service_fn;
@@ -30,68 +29,26 @@ type BoxFut = Box<dyn Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 use wlambda;
 use wlambda::vval::VVal;
 use wlambda::prelude::create_wlamba_prelude;
-//use wlambda::vval::{Env};
+use wlambda::threads;
 
-struct Exec {
-    do_exec: bool,
-    path: String,
-    method: String,
-    response: Option<String>,
-}
+fn start_wlambda_thread() -> threads::Sender {
+    let mut msgh = threads::MsgHandle::new();
 
-fn start_wlambda_thread() -> std::sync::Arc<(std::sync::Mutex<Exec>, std::sync::Condvar)> {
-    let a = std::sync::Arc::new((std::sync::Mutex::new(Exec {
-        do_exec: false,
-        path: String::from(""),
-        method: String::from(""),
-        response: None,
-    }), std::sync::Condvar::new()));
+    let sender = msgh.sender();
 
-    let a2 = a.clone();
     std::thread::spawn(move || {
         let genv = create_wlamba_prelude();
-
-        let mut wl_eval_ctx =
-            wlambda::compiler::EvalContext::new_with_user(
-                genv,
-                std::rc::Rc::new(std::cell::RefCell::new(0)));
+        let mut wl_eval_ctx = wlambda::compiler::EvalContext::new(genv);
 
         match wl_eval_ctx.eval_file("main.wl") {
             Ok(_) => (),
-            Err(e) => { panic!(format!("AUDIO SCRIPT ERROR: {}", e)); }
+            Err(e) => { panic!(format!("'main.wl' SCRIPT ERROR: {}", e)); }
         }
 
-        let req_cb = wl_eval_ctx.get_global_var("req");
-        if req_cb.is_none() {
-            panic!("script did not setup a global draw() function!");
-        }
-        let req_cb = req_cb.unwrap();
-        if !req_cb.is_fun() {
-            panic!("script did not setup a global draw() function!");
-        }
-
-        loop {
-            println!("YY1");
-            let &(ref ex, ref cvar) = &*a2;
-            let mut req = ex.lock().unwrap();
-            println!("YY2");
-            while !req.do_exec {
-                req = cvar.wait(req).unwrap();
-            }
-            println!("YY3");
-
-            let ret =
-                wl_eval_ctx.call(
-                    &req_cb,
-                    &vec![VVal::new_str(&req.method), VVal::new_str(&req.path), VVal::Nul]).unwrap();
-            println!("YY4");
-            req.response = Some(ret.s());
-            req.do_exec = false;
-            cvar.notify_one();
-            println!("YY5");
-        }
+        msgh.run(&mut wl_eval_ctx);
     });
-    a
+
+    sender
 }
 
 #[allow(dead_code)]
@@ -108,36 +65,15 @@ fn mime_for_ext(s: &str) -> String {
 }
 
 #[allow(dead_code)]
-fn webmain(req: Request<Body>, ctx: std::sync::Arc<(std::sync::Mutex<Exec>, std::sync::Condvar)>) -> BoxFut {
+fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
-    let get_response = move |method: String, path: String| {
-        {
-            let &(ref ex, ref cvar) = &*ctx;
-            let mut req = ex.lock().unwrap();
-            println!("XX");
-            while req.do_exec {
-                req = cvar.wait(req).unwrap();
-            }
-            println!("XX2");
-            req.do_exec = true;
-            req.method = format!("{:?}", method);
-            req.path = path;
-            req.response = None;
-
-            cvar.notify_one();
-            println!("XX3");
-        }
-
-        {
-            let &(ref ex, ref cvar) = &*ctx;
-            let mut req = ex.lock().unwrap();
-            println!("XX4");
-            while req.response.is_none() {
-                req = cvar.wait(req).unwrap();
-            }
-            println!("XX5");
-            Body::from(req.response.clone().unwrap())
-        }
+    let get_response = move |method: String, path: String, data: VVal| {
+        let v = VVal::vec();
+        v.push(VVal::new_str(&method));
+        v.push(VVal::new_str(&path));
+        v.push(data);
+        let r = snd.call("req", v);
+        Body::from(r.s())
     };
 
     let mut response = Response::new(Body::empty());
@@ -145,6 +81,7 @@ fn webmain(req: Request<Body>, ctx: std::sync::Arc<(std::sync::Mutex<Exec>, std:
     let method : hyper::Method = req.method().clone();
     let path   = String::from(req.uri().path());
     let p : &str = &path;
+    println!("* {:?} {}", method, path);
     match (&method, p) {
         (&Method::POST, path) => {
             let spath = String::from(path);
@@ -152,12 +89,11 @@ fn webmain(req: Request<Body>, ctx: std::sync::Arc<(std::sync::Mutex<Exec>, std:
                 let body : Vec<u8> = chunk.iter().cloned().collect();
                 match String::from_utf8(body) {
                     Ok(b) => {
-                        match serde_json::from_str::<Value>(&b) {
+                        match serde_json::from_str::<VVal>(&b) {
                             Ok(v) => {
-                                println!("FO {}", v);
                                 *response.body_mut() =
                                     get_response(
-                                        format!("{:?}", method), spath);
+                                        format!("{:?}", method), spath, v);
                             },
                             Err(_) => {
                                 *response.status_mut() = StatusCode::BAD_REQUEST;
@@ -209,7 +145,7 @@ fn webmain(req: Request<Body>, ctx: std::sync::Arc<(std::sync::Mutex<Exec>, std:
                     *response.status_mut() = StatusCode::NOT_FOUND;
                 }
             } else {
-                *response.body_mut() = get_response(format!("{:?}", method), spath);
+                *response.body_mut() = get_response(format!("{:?}", method), spath, VVal::Nul);
 
             }
         },
@@ -225,12 +161,12 @@ fn webmain(req: Request<Body>, ctx: std::sync::Arc<(std::sync::Mutex<Exec>, std:
 fn start_server() {
     let addr = ([127, 0, 0, 1], 19099).into();
 
-    let a = start_wlambda_thread();
+    let sender = start_wlambda_thread();
 
     let server = Server::bind(&addr)
         .serve(move || {
-            let a2 = a.clone();
-            service_fn(move |req: Request<Body>| webmain(req, a2.clone()))
+            let sender2 = sender.clone();
+            service_fn(move |req: Request<Body>| webmain(req, sender2.clone()))
         })
         .map_err(|e| eprintln!("server error: {}", e));
 
