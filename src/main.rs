@@ -64,15 +64,34 @@ fn mime_for_ext(s: &str) -> String {
     )
 }
 
+fn parse_basic_auth(header: &str) -> VVal {
+    use base64::decode;
+    let mut i = header.split_ascii_whitespace();
+    let m : String = String::from(i.next().unwrap_or(""));
+    let b : String = String::from(i.next().unwrap_or(""));
+
+    if m != "Basic" || b.is_empty() {
+        VVal::Nul
+    } else {
+        let v = VVal::vec();
+        v.push(VVal::new_str(&m));
+        v.push(VVal::new_str(
+            &String::from_utf8(decode(&b))
+            .unwrap_or(String::from(""))));
+        v
+    }
+}
+
 #[allow(dead_code)]
 fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
+    let gr_snd = snd.clone();
     let get_response = move |method: String, path: String, data: VVal| {
         let v = VVal::vec();
         v.push(VVal::new_str(&method));
         v.push(VVal::new_str(&path));
         v.push(data);
-        let r = snd.call("req", v);
+        let r = gr_snd.call("req", v);
         Body::from(r.s())
     };
 
@@ -81,6 +100,29 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
     let method : hyper::Method = req.method().clone();
     let path   = String::from(req.uri().path());
     let p : &str = &path;
+
+    let authenticated =
+        if let Some(head_val) = req.headers().get(hyper::header::AUTHORIZATION) {
+            let v = VVal::vec();
+            v.push(VVal::new_str(&format!("{:?}", method)));
+            v.push(VVal::new_str(&String::from(&path)));
+            v.push(parse_basic_auth(head_val.to_str().unwrap_or("")));
+            let r = snd.call("auth", v);
+            r.b()
+        } else {
+            false
+        };
+
+    if !authenticated {
+        let r = snd.call("auth_realm", VVal::Nul);
+        *response.status_mut() = StatusCode::UNAUTHORIZED;
+        (*response.headers_mut()).insert(
+            HeaderName::from_static("www-authenticate"),
+            HeaderValue::from_str(
+                &format!("Basic realm=\"{}\"", r.s_raw())).unwrap());
+        return Box::new(future::ok(response));
+    }
+
     println!("* {:?} {}", method, path);
     match (&method, p) {
         (&Method::POST, path) => {
@@ -159,9 +201,13 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
 #[allow(dead_code)]
 fn start_server() {
-    let addr = ([127, 0, 0, 1], 19099).into();
-
     let sender = start_wlambda_thread();
+
+    let sa : std::net::SocketAddr =
+        sender.call("local_endpoint", VVal::Nul).s_raw()
+            .parse().unwrap_or(
+                "127.0.0.1:19099".parse().unwrap());
+    let addr = sa.into();
 
     let server = Server::bind(&addr)
         .serve(move || {
