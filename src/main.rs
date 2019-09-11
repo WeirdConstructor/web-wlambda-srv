@@ -45,15 +45,15 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
 
     for (i, b) in binds.iter().enumerate() {
         if b.is_float() {
-            stmt.bind(i + 1, &sqlite::Value::Float(b.f()));
+            stmt.bind(i + 1, &sqlite::Value::Float(b.f())).unwrap();
         } else if b.is_int() {
-            stmt.bind(i + 1, &sqlite::Value::Integer(b.i()));
+            stmt.bind(i + 1, &sqlite::Value::Integer(b.i())).unwrap();
         } else if let VVal::Byt(u) = b {
-            stmt.bind(i + 1, &sqlite::Value::Binary(u.borrow().clone()));
+            stmt.bind(i + 1, &sqlite::Value::Binary(u.borrow().clone())).unwrap();
         } else if let VVal::Nul = b {
-            stmt.bind(i + 1, &sqlite::Value::Null);
+            stmt.bind(i + 1, &sqlite::Value::Null).unwrap();
         } else {
-            stmt.bind(i + 1, &sqlite::Value::String(b.s()));
+            stmt.bind(i + 1, &sqlite::Value::String(b.s())).unwrap();
         }
     }
 
@@ -71,8 +71,8 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
 
                 let row_vv = VVal::map();
                 for i in 0..stmt.count() {
-                    row_vv.set_key(
-                        &VVal::new_str(stmt.name(i)),
+                    row_vv.set_map_key(
+                        stmt.name(i),
                         match stmt.kind(i) {
                             sqlite::Type::Integer =>
                                 VVal::Int(stmt.read::<i64>(i).unwrap()),
@@ -82,7 +82,7 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
                                 VVal::new_byt(stmt.read::<Vec<u8>>(i).unwrap())
                             },
                             sqlite::Type::String => {
-                                VVal::new_str(&stmt.read::<String>(i).unwrap())
+                                VVal::new_str_mv(stmt.read::<String>(i).unwrap())
                             },
                             sqlite::Type::Null => VVal::Nul,
                         });
@@ -184,9 +184,9 @@ fn parse_basic_auth(header: &str) -> VVal {
         VVal::Nul
     } else {
         let v = VVal::vec();
-        v.push(VVal::new_str(&m));
-        v.push(VVal::new_str(
-            &String::from_utf8(decode(&b))
+        v.push(VVal::new_str_mv(m));
+        v.push(VVal::new_str_mv(
+            String::from_utf8(decode(&b))
             .unwrap_or(String::from(""))));
         v
     }
@@ -198,8 +198,8 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
     let gr_snd = snd.clone();
     let get_response = move |method: String, path: String, data: VVal| {
         let v = VVal::vec();
-        v.push(VVal::new_str(&method));
-        v.push(VVal::new_str(&path));
+        v.push(VVal::new_str_mv(method));
+        v.push(VVal::new_str_mv(path));
         v.push(data);
         let r = gr_snd.call("req", v);
         Body::from(r.s())
@@ -214,8 +214,8 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
     let authenticated =
         if let Some(head_val) = req.headers().get(hyper::header::AUTHORIZATION) {
             let v = VVal::vec();
-            v.push(VVal::new_str(&format!("{:?}", method)));
-            v.push(VVal::new_str(&String::from(&path)));
+            v.push(VVal::new_str_mv(format!("{:?}", method)));
+            v.push(VVal::new_str_mv(String::from(&path)));
             v.push(parse_basic_auth(head_val.to_str().unwrap_or("")));
             let r = snd.call("auth", v);
             r.b()
