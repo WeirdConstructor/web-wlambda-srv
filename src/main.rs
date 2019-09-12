@@ -53,11 +53,11 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
         } else if let VVal::Nul = b {
             stmt.bind(i + 1, &sqlite::Value::Null).unwrap();
         } else {
-            stmt.bind(i + 1, &sqlite::Value::String(b.s())).unwrap();
+            stmt.bind(i + 1, &sqlite::Value::String(b.s_raw())).unwrap();
         }
     }
 
-    let mut ret = VVal::Bol(true);
+    let mut ret = VVal::Nul;
     loop {
         match stmt.next() {
             Err(e) => {
@@ -65,14 +65,14 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
                     &format!("SQL exec error on '{}': {}", stmt_str, e));
             },
             Ok(sqlite::State::Row) => {
-                if let VVal::Bol(_) = ret {
+                if let VVal::Nul = ret {
                     ret = VVal::vec();
                 };
 
                 let row_vv = VVal::map();
                 for i in 0..stmt.count() {
                     row_vv.set_map_key(
-                        stmt.name(i),
+                        stmt.name(i).to_string(),
                         match stmt.kind(i) {
                             sqlite::Type::Integer =>
                                 VVal::Int(stmt.read::<i64>(i).unwrap()),
@@ -202,7 +202,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
         v.push(VVal::new_str_mv(path));
         v.push(data);
         let r = gr_snd.call("req", v);
-        Body::from(r.s())
+        Body::from(r.to_json(true).unwrap())
     };
 
     let mut response = Response::new(Body::empty());
@@ -246,6 +246,9 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                                 *response.body_mut() =
                                     get_response(
                                         format!("{:?}", method), spath, v);
+                                (*response.headers_mut()).insert(
+                                    HeaderName::from_static("content-type"),
+                                    HeaderValue::from_str("application/json").unwrap());
                             },
                             Err(_) => {
                                 *response.status_mut() = StatusCode::BAD_REQUEST;
@@ -297,6 +300,9 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                     *response.status_mut() = StatusCode::NOT_FOUND;
                 }
             } else {
+                (*response.headers_mut()).insert(
+                    HeaderName::from_static("content-type"),
+                    HeaderValue::from_str("application/json").unwrap());
                 *response.body_mut() =
                     get_response(
                         format!("{:?}", method), spath, VVal::Nul);
