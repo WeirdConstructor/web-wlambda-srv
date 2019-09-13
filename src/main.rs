@@ -129,10 +129,16 @@ fn start_wlambda_thread() -> threads::Sender {
             "db:exec",
             |env: &mut wlambda::vval::Env, argc: usize| {
                 let stmt_str = env.arg(0).s_raw();
-                let mut binds = vec![];
-                for i in 1..argc {
-                    binds.push(env.arg(i).clone())
-                }
+                let binds =
+                    if env.arg(1).is_vec() {
+                        env.arg(1).to_vec()
+                    } else {
+                        let mut binds = vec![];
+                        for i in 1..argc {
+                            binds.push(env.arg(i).clone())
+                        }
+                        binds
+                    };
 
                 env.with_user_do(|c: &mut WLContext| {
                     if let Some(ref mut db) = c.db_con {
@@ -142,6 +148,11 @@ fn start_wlambda_thread() -> threads::Sender {
                     }
                 })
             }, Some(1), None);
+
+        let lfmr =
+            std::rc::Rc::new(std::cell::RefCell::new(
+                wlambda::compiler::LocalFileModuleResolver::new()));
+        genv.borrow_mut().set_resolver(lfmr);
 
         let mut wl_eval_ctx =
             wlambda::compiler::EvalContext::new_with_user(
