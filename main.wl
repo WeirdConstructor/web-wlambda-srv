@@ -9,17 +9,17 @@
 
 #    !exec = { _? :from_req ~ apply db:exec @; };
 
-    !t = str:cat method ":" path;
+    !t = std:str:cat method ":" path;
     u:regex_match t $[
         $q"^POST:/search/entries", {||
             !stmt = $[];
-            push stmt
+            std:push stmt
                 $q"SELECT e.* FROM entries e
                    LEFT JOIN tag_entries te ON e.id = te.entry_id
                    LEFT JOIN tags t ON t.id = te.tag_id
                    WHERE (1=0)";
-            data.tags {|| push stmt ~ "OR t.name=?"; };
-            !stmt = str:join " " stmt;
+            data.tags {|| std:push stmt ~ "OR t.name=?"; };
+            !stmt = std:str:join " " stmt;
             return :from_req ~ db:exec stmt data.tags;
         },
         $q"^GET:/data/entries", {||
@@ -94,7 +94,7 @@
     ";
 
     !r = db:exec "SELECT value FROM system WHERE key=?" :version;
-    displayln "* db version = " r.(0).value;
+    std:displayln "* db version = " r.(0).value;
     (not r) {
         db:exec "INSERT INTO system (key, value) VALUES(?, ?)" :version "1";
     };

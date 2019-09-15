@@ -27,8 +27,7 @@ use std::path::{Path, PathBuf};
 type BoxFut = Box<dyn Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 
 use wlambda;
-use wlambda::vval::VVal;
-use wlambda::prelude::create_wlamba_prelude;
+use wlambda::{VVal, GlobalEnv};
 use wlambda::threads;
 
 struct WLContext {
@@ -105,7 +104,7 @@ fn start_wlambda_thread() -> threads::Sender {
     let sender = msgh.sender();
 
     std::thread::spawn(move || {
-        let genv = create_wlamba_prelude();
+        let genv = GlobalEnv::new_default();
 
         genv.borrow_mut().add_func(
             "db:connect_sqlite",
