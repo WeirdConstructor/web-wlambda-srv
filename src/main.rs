@@ -211,8 +211,37 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
         v.push(VVal::new_str_mv(method));
         v.push(VVal::new_str_mv(path));
         v.push(data);
-        let r = gr_snd.call("req", v);
-        Body::from(r.to_json(true).unwrap())
+        gr_snd.call("req", v)
+    };
+
+    let apply_response = |wl_resp: VVal, resp: &mut hyper::Response<hyper::Body>| {
+        if wl_resp.is_map() {
+            if let Some(status) = wl_resp.get_key("status") {
+                *resp.status_mut() = StatusCode::from_u16(status.i() as u16).unwrap();
+            }
+            if let Some(ct) = wl_resp.get_key("content_type") {
+                (*resp.headers_mut()).insert(
+                    HeaderName::from_static("content-type"),
+                    HeaderValue::from_str(&ct.s()).unwrap());
+            }
+            if let Some(data) = wl_resp.get_key("data") {
+                (*resp.headers_mut()).insert(
+                    HeaderName::from_static("content-type"),
+                    HeaderValue::from_str("application/json").unwrap());
+                *resp.body_mut() =
+                    Body::from(data.to_json(true).unwrap());
+            } else {
+                *resp.body_mut() =
+                    Body::from(
+                        wl_resp.get_key("body").unwrap_or(VVal::Nul).s_raw());
+            }
+        } else {
+            (*resp.headers_mut()).insert(
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_str("application/json").unwrap());
+            *resp.body_mut() =
+                Body::from(wl_resp.to_json(true).unwrap());
+        }
     };
 
     let mut response = Response::new(Body::empty());
@@ -230,7 +259,11 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
             let r = snd.call("auth", v);
             r.b()
         } else {
-            false
+            let v = VVal::vec();
+            v.push(VVal::new_str_mv(format!("{:?}", method)));
+            v.push(VVal::new_str_mv(String::from(&path)));
+            let need_auth = snd.call("need_auth", v).b();
+            !need_auth
         };
 
     if !authenticated {
@@ -245,35 +278,6 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
     println!("* {:?} {}", method, path);
     match (&method, p) {
-        (&Method::POST, path) => {
-            let spath = String::from(path);
-            let res = req.into_body().concat2().map(move |chunk| {
-                let body : Vec<u8> = chunk.iter().cloned().collect();
-                match String::from_utf8(body) {
-                    Ok(b) => {
-                        match serde_json::from_str::<VVal>(&b) {
-                            Ok(v) => {
-                                *response.body_mut() =
-                                    get_response(
-                                        format!("{:?}", method), spath, v);
-                                (*response.headers_mut()).insert(
-                                    HeaderName::from_static("content-type"),
-                                    HeaderValue::from_str("application/json").unwrap());
-                            },
-                            Err(_) => {
-                                *response.status_mut() = StatusCode::BAD_REQUEST;
-                            },
-                        }
-                    },
-                    _ => {
-                        *response.status_mut() = StatusCode::BAD_REQUEST;
-                    },
-                };
-                response
-            });
-
-            return Box::new(res);
-        },
         (&Method::GET, path) => {
             let spath = String::from(path);
             let path = Path::new(path);
@@ -310,17 +314,36 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                     *response.status_mut() = StatusCode::NOT_FOUND;
                 }
             } else {
-                (*response.headers_mut()).insert(
-                    HeaderName::from_static("content-type"),
-                    HeaderValue::from_str("application/json").unwrap());
-                *response.body_mut() =
-                    get_response(
-                        format!("{:?}", method), spath, VVal::Nul);
-
+                apply_response(
+                    get_response(format!("{:?}", method), spath, VVal::Nul),
+                    &mut response);
             }
         },
-        _ => {
-            *response.status_mut() = StatusCode::NOT_FOUND;
+        (_, path) => {
+            let spath = String::from(path);
+            let res = req.into_body().concat2().map(move |chunk| {
+                let body : Vec<u8> = chunk.iter().cloned().collect();
+                match String::from_utf8(body) {
+                    Ok(b) => {
+                        match serde_json::from_str::<VVal>(&b) {
+                            Ok(v) => {
+                                apply_response(
+                                    get_response(format!("{:?}", method), spath, v),
+                                    &mut response);
+                            },
+                            Err(_) => {
+                                *response.status_mut() = StatusCode::BAD_REQUEST;
+                            },
+                        }
+                    },
+                    _ => {
+                        *response.status_mut() = StatusCode::BAD_REQUEST;
+                    },
+                };
+                response
+            });
+
+            return Box::new(res);
         },
     };
 
