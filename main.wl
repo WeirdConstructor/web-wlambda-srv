@@ -15,7 +15,6 @@
 !:global req = {
     !(method, path, data) = @;
 
-#    !exec = { _? :from_req ~ apply db:exec @; };
     !data = block :from_req {
         !t = std:str:cat method ":" path;
         u:regex_match t $[
