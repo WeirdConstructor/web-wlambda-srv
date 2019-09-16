@@ -85,7 +85,7 @@ var Entry = {
                     oninput: function(e) {
                         vn.state.body_changed(vn, e.target.value);
                     } },
-                  "")));
+                  vn.state.body)));
         } else {
             card.push(m("div", { class: "card-content" },
                 m("div", { class: "content" },
@@ -126,9 +126,15 @@ var RecentEntries = {
 };
 
 var TopLevel = {
-    oninit: function() {
+    oninit: function(vn) {
+        vn.state.body = "123";
     },
-    view: function() {
+    body_changed: function(vn, v) {
+        console.log("SET:", [vn.state.body, v]);
+        vn.state.body = v;
+    },
+    view: function(vn) {
+        console.log("DRAW;", vn.state);
         return m("div", [
             m("div", "a"),
             m(RecentEntries),
