@@ -4,6 +4,14 @@
 !:global local_endpoint = \ "0.0.0.0:19099" ;
 !:global auth           = { !(method, path, auth) = @;
                             auth.1 == "wctor:******" };
+!parse_tags = {
+    !tags = _;
+    tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
+        !m = _;
+        (is_none m.2) { m.1 } { m.2 }
+    }
+};
+
 !:global req = {
     !(method, path, data) = @;
 
@@ -42,12 +50,12 @@
                 _? :from_req ~
                     db:exec
                         "INSERT INTO entries (tags, body) VALUES(?,?)"
-                        (std:str:join ", " data.tags)
-                        data.body;
+                        data.tags data.body;
                 !e = _? :from_req ~
                     db:exec "SELECT MAX(id) AS new_entry_id FROM entries";
                 !new_entry_id = e.(0).new_entry_id;
-                !tag_ids = data.tags {
+                !tag_vec = parse_tags data.tags;
+                !tag_ids = tag_vec {
                     _? :from_req ~
                         db:exec "INSERT OR IGNORE INTO tags (name) VALUES(?)" _;
                     !r = _? :from_req ~
