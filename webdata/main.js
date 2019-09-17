@@ -324,7 +324,7 @@ var TopLevel = {
                         m("button", { class: "button is-primary", style: "margin-bottom: 1rem", onclick: function() { new_entry() } }, "New"),
                         m(EntryView, { entry_id: edit_entry_id }),
                     ]),
-                    m("div", { class: "column" }, "Search Column Here"),
+//                    m("div", { class: "column" }, "Search Column Here"),
                     m("div", { class: "column" },  m(RecentEntries)),
                 ]),
 //            ]),
