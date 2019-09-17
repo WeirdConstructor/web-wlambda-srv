@@ -31,6 +31,7 @@ var c = 0;
 
 var recent_entries = null;
 var edit_entry_id = null;
+var enable_entry_edit = false;
 
 function get_recent_valid_entry_id() {
     if (recent_entries && recent_entries.length > 0) {
@@ -64,6 +65,7 @@ function new_entry() {
          console.log("NEW ENTRY:", data);
          get_recent_entries();
          edit_entry_id = data[0].new_entry_id;
+         enable_entry_edit = true;
      });
 }
 
@@ -137,7 +139,9 @@ class Entry {
     add_log() {
         let d = new Date();
         this.entry.body +=
-            "    " + padl(d.getHours(), "0", 2) + ":" + padl(d.getMinutes(), "0", 2) + " [00:00] - \n";
+            "    " + padl("" + d.getHours(), "0", 2)
+             + ":" + padl("" + d.getMinutes(), "0", 2)
+             + " [00:00] - \n";
         this.changed = true;
     }
 
@@ -193,6 +197,7 @@ class EntryView {
                          onclick: function() {
                              if (vn.attrs.center_on_edit) {
                                  edit_entry_id = entry.id();
+                                 enable_entry_edit = true;
                              } else {
                                  vn.state.edit_mode = true;
                              }
@@ -222,10 +227,15 @@ class EntryView {
 
         let card = [ this.m_header(vn, entry), ];
 
+        if (enable_entry_edit) {
+            vn.state.edit_mode = true;
+            enable_entry_edit = false;
+        }
+
         if (vn.state.edit_mode) {
             card.push(m("div", { class: "card-content", style: "padding: 0.5rem" },
                 m("textarea",
-                  { class: "textarea is-fullwidth is-family-monospace",
+                  { class: "textarea is-size-7 is-fullwidth is-family-monospace",
                     style: "min-height: 300px",
                     value: entry.body(),
                     oninput: function(e) {
