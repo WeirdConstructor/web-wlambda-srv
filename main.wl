@@ -45,6 +45,36 @@
                                ORDER BY id DESC
                                LIMIT 25";
             },
+            $q"^POST:/data/entries/(\d+)", {||
+                !entry_id = _.1;
+                std:displayln "DATA SAVE:" _ data;
+
+                _? :from_req ~
+                    db:exec
+                        "UPDATE entries SET tags=?,body=?,deleted=? WHERE id=?"
+                        data.tags
+                        data.body
+                        (is_none data.deleted)[{ 0 }, { 1 }]
+                        entry_id;
+                !tag_vec = parse_tags data.tags;
+                !tag_ids = tag_vec {
+                    _? :from_req ~
+                        db:exec "INSERT OR IGNORE INTO tags (name) VALUES(?)" _;
+                    !r = _? :from_req ~
+                        db:exec "SELECT id FROM tags WHERE name=?" _;
+                    r.(0).id
+                };
+                _? :from_req ~ db:exec
+                    $q"DELETE FROM tag_entries WHERE entry_id=?"
+                    entry_id;
+                tag_ids {
+                    _? :from_req ~
+                        db:exec
+                            $q"INSERT INTO tag_entries (tag_id, entry_id)
+                               VALUES(?,?)" _ entry_id;
+                };
+                return :from_req [ "ok", entry_id ];
+            },
             $q"^POST:/data/entries", {||
                 _? :from_req ~
                     db:exec
@@ -89,7 +119,8 @@
             tags TEXT NOT NULL DEFAULT '',
             ctime TEXT DEFAULT (datetime('now')),
             mtime TEXT DEFAULT (datetime('now')),
-            body TEXT NOT NULL DEFAULT ''
+            body TEXT NOT NULL DEFAULT '',
+            deleted INTEGER NOT NULL DEFAULT 0
         );
     ";
 
