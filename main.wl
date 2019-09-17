@@ -2,6 +2,8 @@
 
 !:global auth_realm     = \ "wctor_journal" ;
 !:global local_endpoint = \ "0.0.0.0:19099" ;
+!:global file_prefix    = { || "/journal/files" };
+!:global need_auth      = { || $t };
 !:global auth           = { !(method, path, auth) = @;
                             auth.1 == "wctor:******" };
 !parse_tags = {
@@ -18,13 +20,13 @@
     !data = block :from_req {
         !t = std:str:cat method ":" path;
         u:regex_match t $[
-            $q"^GET:/search/entries/recent", {||
+            $q"^GET:/journal/search/entries/recent", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries e
-                               ORDER BY ctime DESC, id DESC
+                               ORDER BY mtime DESC, id DESC
                                LIMIT 25";
             },
-            $q"^POST:/search/entries", {||
+            $q"^POST:/journal/search/entries", {||
                 !stmt = $[];
                 std:push stmt
                     $q"SELECT e.* FROM entries e
@@ -32,29 +34,30 @@
                        LEFT JOIN tags t ON t.id = te.tag_id
                        WHERE (1=0)";
                 data.tags {|| std:push stmt ~ "OR t.name=?"; };
+                std:push stmt "ORDER BY mtime DESC";
                 !stmt = std:str:join " " stmt;
                 return :from_req ~ db:exec stmt data.tags;
             },
-            $q"^GET:/data/entries/(\d+)", {||
+            $q"^GET:/journal/data/entries/(\d+)", {||
                 return :from_req ~
                     0 ~ db:exec $q"SELECT * FROM entries WHERE id=?" _.1;
             },
-            $q"^GET:/data/entries", {||
+            $q"^GET:/journal/data/entries", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries
                                ORDER BY id DESC
                                LIMIT 25";
             },
-            $q"^POST:/data/entries/(\d+)", {||
+            $q"^POST:/journal/data/entries/(\d+)", {||
                 !entry_id = _.1;
                 std:displayln "DATA SAVE:" _ data;
 
                 _? :from_req ~
                     db:exec
-                        "UPDATE entries SET tags=?,body=?,deleted=? WHERE id=?"
+                        "UPDATE entries SET tags=?,body=?,deleted=?,mtime=datetime('now') WHERE id=?"
                         data.tags
                         data.body
-                        (is_none data.deleted)[{ 0 }, { 1 }]
+                        (is_none data.deleted)[{ 0 }, { data.deleted }]
                         entry_id;
                 !tag_vec = parse_tags data.tags;
                 !tag_ids = tag_vec {
@@ -75,7 +78,7 @@
                 };
                 return :from_req [ "ok", entry_id ];
             },
-            $q"^POST:/data/entries", {||
+            $q"^POST:/journal/data/entries", {||
                 _? :from_req ~
                     db:exec
                         "INSERT INTO entries (tags, body) VALUES(?,?)"
@@ -99,7 +102,7 @@
                 };
                 return :from_req e;
             },
-            $q"^GET:/data/entries/(\d+)", {
+            $q"^GET:/journal/data/entries/(\d+)", {
                 return :from_req ~
                     db:exec "SELECT * FROM entries WHERE id=?" _.1;
             },

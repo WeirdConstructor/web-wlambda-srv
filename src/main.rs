@@ -281,8 +281,16 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
         (&Method::GET, path) => {
             let spath = String::from(path);
             let path = Path::new(path);
-            if path.starts_with("/files/") {
-                let webdata_path = match path.strip_prefix("/files") {
+
+            let v = VVal::vec();
+            v.push(VVal::new_str_mv(format!("{:?}", method)));
+            v.push(VVal::new_str_mv(spath.to_string()));
+            let r = snd.call("file_prefix", v);
+            let prefix_sl = r.s_raw() + "/";
+            let prefix = r.s_raw();
+
+            if path.starts_with(&prefix_sl) {
+                let webdata_path = match path.strip_prefix(&prefix) {
                     Ok(p) => p,
                     _ => {
                         *response.status_mut() = StatusCode::NOT_FOUND;

@@ -43,7 +43,7 @@ function get_recent_valid_entry_id() {
 }
 
 function get_recent_entries() {
-    m.request({ method: "GET", url: "/search/entries/recent"
+    m.request({ method: "GET", url: "/journal/search/entries/recent"
     }).then(function(data) {
         console.dir(data);
         if (data == null) { data = []; }
@@ -59,7 +59,7 @@ function delete_entry() {
 }
 
 function new_entry() {
-    m.request({ method: "POST", url: "/data/entries", body: { tags: "new", body: "" } })
+    m.request({ method: "POST", url: "/journal/data/entries", body: { tags: "new", body: "" } })
      .then(function(data) {
          console.log("NEW ENTRY:", data);
          get_recent_entries();
@@ -90,6 +90,11 @@ function get_entry_by_id(id) {
     return entries[id];
 }
 
+function padl(s, c, l) {
+    while (s.length < l) { s = c + s; } 
+    return s
+}
+
 class Entry {
     constructor(id, entry) {
         if (entry) {
@@ -110,7 +115,7 @@ class Entry {
         console.log("GET ENTRY:", id);
         if (self.entry_id == id) return;
 
-        m.request({ method: "GET", url: "/data/entries/" + id })
+        m.request({ method: "GET", url: "/journal/data/entries/" + id })
          .then(function(data) {
             self.set_entry(data);
          });
@@ -129,12 +134,19 @@ class Entry {
         get_recent_entries();
     }
 
+    add_log() {
+        let d = new Date();
+        this.entry.body +=
+            "    " + padl(d.getHours(), "0", 2) + ":" + padl(d.getMinutes(), "0", 2) + " [00:00] - \n";
+        this.changed = true;
+    }
+
     save() {
         let self = this;
 
         m.request({
             method: "POST",
-            url: "/data/entries/" + this.entry.id,
+            url: "/journal/data/entries/" + this.entry.id,
             body: this.entry
         }).then(function(data) {
             self.changed = false;
@@ -162,9 +174,8 @@ class EntryView {
                       { class: "input is-small",
                         type: "text",
                         value: entry.tags(),
-                        onchange: function(e) {
-                            entry.set_tags(e.target.value);
-                        } },
+                        oninput: function(e) { entry.set_tags(e.target.value); },
+                        },
                       "")));
             ht.push(
                 m("a", { class: "card-header-icon", href: "#",
@@ -223,7 +234,7 @@ class EntryView {
                   entry.body())));
         } else {
             if (entry.body()) {
-                card.push(m("div", { class: "card-content", style: "padding: 0.5rem" },
+                card.push(m("div", { class: "card-content", style: "padding: 0.5rem; padding-bottom: 0.3rem" },
                     m("div", { class: "content" },
                         m.trust(marked(entry.body(), markedOptions)))));
             }
@@ -236,8 +247,26 @@ class EntryView {
             btn_class += " is-primary";
         }
 
+        card.push(m("div", { class: "card-content" },
+            m("div", { class: "is-size-7 has-background-light columns" }, [
+                m("div", {class: "column is-2 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                    m("p", entry.id()),
+                ]),
+                m("div", {class: "column is-5 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                    m("div", entry.mtime()),
+                ]),
+                m("div", {class: "column is-5 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                    m("div", entry.ctime()),
+                ])
+            ])
+        ));
+
         card.push(
             m("footer", { class: "card-footer" }, [
+                m("div", { class: "card-footer-item is-size-7" },
+                    m("button", { class: btn_class,
+                                  onclick: function() { entry.add_log() } },
+                        "Log")),
                 m("div", { class: "card-footer-item is-size-7" },
                     m("button", { class: btn_class,
                                   onclick: function() { entry.save() } },
@@ -246,15 +275,6 @@ class EntryView {
                     m("button", { class: btn_class,
                                   onclick: function() { entry.del() } },
                         "Delete")),
-                m("div", { class: "card-footer-item is-size-7 columns" }, [
-                    m("div", {class: "column is-1 has-text-centered"}, [
-                        m("p", entry.id()),
-                    ]),
-                    m("div", {class: "column is-11 has-text-centered"}, [
-                        m("div", entry.mtime()),
-                        m("div", entry.ctime()),
-                    ])
-                ])
             ]));
 
         return m("div", { class: "card" }, card)
