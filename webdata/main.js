@@ -32,6 +32,7 @@ var c = 0;
 var recent_entries = null;
 var edit_entry_id = null;
 var enable_entry_edit = false;
+var modal = null;
 
 function get_recent_valid_entry_id() {
     if (recent_entries && recent_entries.length > 0) {
@@ -50,13 +51,10 @@ function get_recent_entries() {
         if (data == null) { data = []; }
         recent_entries = data;
 
-        if (recent_entries.length > 0) {
+        if (recent_entries.length > 0 && edit_entry_id == null) {
             edit_entry_id = get_recent_valid_entry_id();
         }
     });
-}
-
-function delete_entry() {
 }
 
 function new_entry() {
@@ -68,7 +66,6 @@ function new_entry() {
          enable_entry_edit = true;
      });
 }
-
 
 var entries = {};
 function get_entry_by_id(id) {
@@ -97,8 +94,12 @@ function padl(s, c, l) {
     return s
 }
 
+let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -/;
+let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
+
 class Entry {
     constructor(id, entry) {
+    console.log("CONSTR ENTR:", [id, entry]);
         if (entry) {
             this.set_entry(entry)
         } else {
@@ -127,13 +128,29 @@ class Entry {
         return this.changed;
     }
 
+    ask_del() {
+        let self = this;
+        modal = {
+            text: "Really delete?",
+            cb: function () { self.del(); },
+        };
+    }
+
     del() {
+        let self = this;
         this.entry.deleted = 1;
-        this.save();
-        if (this.entry.id == edit_entry_id) {
-            edit_entry_id = null;
-        }
-        get_recent_entries();
+        this.save(function() {
+            if (self.entry.id == edit_entry_id) {
+                edit_entry_id = null;
+                enable_entry_edit = false;
+            }
+            get_recent_entries();
+        });
+    }
+
+    is_edited_entry() {
+        if (!this.entry) return false;
+        return this.entry.id == edit_entry_id;
     }
 
     add_log() {
@@ -145,7 +162,7 @@ class Entry {
         this.changed = true;
     }
 
-    save() {
+    save(done_cb) {
         let self = this;
 
         m.request({
@@ -154,7 +171,7 @@ class Entry {
             body: this.entry
         }).then(function(data) {
             self.changed = false;
-            console.log("SAVED ENTRY " + this.entry.id);
+            if (done_cb) done_cb();
         });
     }
 
@@ -163,10 +180,50 @@ class Entry {
 
     mtime() { return this.entry.mtime }
     ctime() { return this.entry.ctime }
-    id() { return this.entry.id }
-    body() { return this.entry.body }
-    tags() { return this.entry.tags }
+    id()    { return this.entry.id }
+    body()  { return this.entry.body }
+    tags()  { return this.entry.tags }
+
+    full_body()  {
+        let v = this.entry.body.split(/\n/);
+        let last_time = null;
+        return v.map(function(l) {
+            let m = l.match(time_log_re);
+            if (m) {
+                let time = [parseInt(m[1]), parseInt(m[2])];
+                if (last_time) {
+                    let last_mins_of_day = last_time[0] * 60 + last_time[1];
+                    let cur_mins_of_day  = time[0] * 60 + time[1];
+                    let diff = cur_mins_of_day - last_mins_of_day;
+                    let hours = Math.floor(diff / 60);
+                    let mins = diff - hours * 60;
+                    let sum = (
+                        "[" + padl("" + hours, "0", 2) + ":"
+                            + padl("" + mins, "0", 2) + "]");
+                    l = l.replace(time_log_repl_re, "$1" + sum + " -");
+                }
+                last_time = time;
+            }
+            return l;
+        }).join("\n")
+    }
+    short_body() {
+        let v = this.entry.body.split(/\n/);
+        let out = [];
+        for (let i = 0; i < 5; i++)
+            out.push(v[i]);
+        return out.join("\n");
+    }
 };
+
+function m_icon_btn(icon_class, cb) {
+    return m("a", { class: "card-header-icon",
+                    href: "#/",
+                    ["aria-label"]: "more options",
+                    onclick: cb },
+        m("span", { class: "icon" },
+            m("i", { class: icon_class, ["aria-hidden"]: "true" })));
+}
 
 class EntryView {
     m_header(vn, entry) {
@@ -181,30 +238,33 @@ class EntryView {
                         oninput: function(e) { entry.set_tags(e.target.value); },
                         },
                       "")));
-            ht.push(
-                m("a", { class: "card-header-icon", href: "#",
-                         ["aria-label"]: "more options",
-                         onclick: function() {
-                             vn.state.edit_mode = false;
-                         } },
-                    m("span", { class: "icon" },
-                        m("i", { class: "fas fa-file", ["aria-hidden"]: "true" }))));
+            ht.push(m_icon_btn(
+                "fas fa-file", function() { vn.state.edit_mode = false; }));
         } else {
             ht.push(m("p", { class: "card-header-title" }, entry.tags()));
-            ht.push(
-                m("a", { class: "card-header-icon", href: "#",
-                         ["aria-label"]: "more options",
-                         onclick: function() {
-                             if (vn.attrs.center_on_edit) {
-                                 edit_entry_id = entry.id();
-                                 enable_entry_edit = true;
-                             } else {
-                                 vn.state.edit_mode = true;
-                             }
-                         } },
-                    m("span", { class: "icon" },
-                        m("i", { class: "fas fa-edit", ["aria-hidden"]: "true" }))));
+            ht.push(m_icon_btn(
+                "fas fa-edit", function() {
+                     if (vn.attrs.center_on_edit) {
+                         edit_entry_id = entry.id();
+                         enable_entry_edit = true;
+                     } else {
+                         vn.state.edit_mode = true;
+                     }
+                }));
+
+            if (!entry.is_edited_entry()) {
+                if (vn.state.show_full) {
+                    ht.push(m_icon_btn(
+                        "fas fa-angle-up",
+                        function() { vn.state.show_full = false; }));
+                } else {
+                    ht.push(m_icon_btn(
+                        "fas fa-angle-down",
+                        function() { vn.state.show_full = true; }));
+                }
+            }
         }
+
         return m("header", { class: "card-header" }, [ ht ]);
     }
 
@@ -225,6 +285,16 @@ class EntryView {
                     ])]));
         }
 
+        let tint_class = "is-primary";
+        if (entry.uncommitted_changes()) {
+            tint_class = "is-danger";
+        }
+
+        let show_full = (
+            entry.is_edited_entry()
+            || vn.state.show_full
+            || vn.state.edit_mode);
+
         let card = [ this.m_header(vn, entry), ];
 
         if (enable_entry_edit) {
@@ -235,7 +305,8 @@ class EntryView {
         if (vn.state.edit_mode) {
             card.push(m("div", { class: "card-content", style: "padding: 0.5rem" },
                 m("textarea",
-                  { class: "textarea is-size-7 is-fullwidth is-family-monospace",
+                  { class: "textarea is-size-7 is-fullwidth is-family-monospace "
+                           + tint_class,
                     style: "min-height: 300px",
                     value: entry.body(),
                     oninput: function(e) {
@@ -244,18 +315,18 @@ class EntryView {
                   entry.body())));
         } else {
             if (entry.body()) {
-                card.push(m("div", { class: "card-content", style: "padding: 0.5rem; padding-bottom: 0.3rem" },
+                card.push(m("div", { class: "card-content",
+                                     style: "padding: 0.5rem; padding-bottom: 0.3rem" },
                     m("div", { class: "content" },
-                        m.trust(marked(entry.body(), markedOptions)))));
+                        m.trust(marked(
+                            show_full
+                                ? entry.full_body()
+                                : entry.short_body(),
+                            markedOptions)))));
             }
         }
 
-        let btn_class = "button is-outlined";
-        if (entry.uncommitted_changes()) {
-            btn_class += " is-danger";
-        } else {
-            btn_class += " is-primary";
-        }
+        let btn_class = "button is-outlined " + tint_class;
 
         card.push(m("div", { class: "card-content" },
             m("div", { class: "is-size-7 has-background-light columns" }, [
@@ -283,11 +354,43 @@ class EntryView {
                         "Save")),
                 m("div", { class: "card-footer-item is-size-7" },
                     m("button", { class: btn_class,
-                                  onclick: function() { entry.del() } },
+                                  onclick: function() { entry.ask_del() } },
                         "Delete")),
             ]));
 
         return m("div", { class: "card" }, card)
+    }
+};
+//<div class="modal">
+//  <div class="modal-background"></div>
+//  <div class="modal-content">
+//    <!-- Any other Bulma elements you want -->
+//  </div>
+//  <button class="modal-close is-large" aria-label="close"></button>
+//</div>
+
+class ModalView {
+    view(vn) {
+        if (modal) {
+            return m("div", { class: "modal is-active" }, [
+                m("div", { class: "modal-background" }),
+                m("div", { class: "modal-content" }, [
+                    m("div", { class: "box content" }, [
+                        m("div", modal.text),
+                        m("div", { class: "columns" }, [
+                            m("div", { class: "column" },
+                                m("button", { class: "button is-fullwidth is-danger",
+                                              onclick: function() { modal.cb(); modal = null; } }, "Yes")),
+                            m("div", { class: "column" },
+                                m("button", { class: "button is-fullwidth is-success",
+                                              onclick: function() { modal = null; } }, "Cancel")),
+                        ])
+                    ])
+                ])
+            ]);
+        } else {
+            return m("div");
+        }
     }
 };
 
@@ -318,10 +421,14 @@ var TopLevel = {
     },
     view: function(vn) {
         return m("section", { class: "section" }, [
+                m(ModalView),
 //            m("div", { class: "container" }, [
                 m("div", { class: "columns is-3" }, [
                     m("div", { class: "column" },  [
-                        m("button", { class: "button is-primary", style: "margin-bottom: 1rem", onclick: function() { new_entry() } }, "New"),
+                        m("button", { class: "button is-primary",
+                                      style: "margin-bottom: 1rem",
+                                      onclick: function() { new_entry() } },
+                            "New"),
                         m(EntryView, { entry_id: edit_entry_id }),
                     ]),
 //                    m("div", { class: "column" }, "Search Column Here"),
