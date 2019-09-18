@@ -6,6 +6,7 @@
 !:global need_auth      = { || $t };
 !:global auth           = { !(method, path, auth) = @;
                             auth.1 == "wctor:******" };
+
 !parse_tags = {
     !tags = _;
     tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
@@ -33,6 +34,9 @@
                        LEFT JOIN tag_entries te ON e.id = te.entry_id
                        LEFT JOIN tags t ON t.id = te.tag_id
                        WHERE (1=0)";
+
+                !tag_vec = parse_tags data.tags;
+
                 data.tags {|| std:push stmt ~ "OR t.name=?"; };
                 std:push stmt "ORDER BY mtime DESC";
                 !stmt = std:str:join " " stmt;

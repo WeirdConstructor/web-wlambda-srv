@@ -476,6 +476,40 @@ class ModalView {
     }
 };
 
+var search_state = [{}, {}];
+
+function do_search(idx, str) {
+}
+
+var SearchColumnView = {
+    view: function(vn) {
+        console.log("RED RE:", recent_entries);
+        let results = search_state[vn.attrs.srcidx].results;
+        let res_node;
+        if (results) {
+//            res_node = m("div", {}, [
+//                search_state[vn.attrs.srcidx].
+//            ]);
+//                recent_entries.filter(e => !e.deleted).map(function(e) {
+//                    return m("div", { class: "is-size-7", style: "margin-bottom: 0.75em" },
+//                        m(EntryView, { entry_id: e.id, center_on_edit: true }))
+//                }));
+        } else {
+            res_node = m("div");
+        }
+
+        return m("div", {}, [
+            m("div", { class: "columns" }, [
+                m("div", { class: "column" },
+                    m("input", { class: "input is-small", type: "text", onchange: function(e) {
+                        do_search(vn.attrs.srcidx, e.target.value)
+                    } })),
+            ]),
+            res_node,
+        ]);
+    },
+};
+
 var RecentEntries = {
     oninit: function(vn) {
         if (!recent_entries) {
