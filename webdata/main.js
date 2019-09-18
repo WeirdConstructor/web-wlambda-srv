@@ -370,12 +370,12 @@ class EntryView {
             || vn.state.show_full
             || vn.state.edit_mode);
 
-        let card = [ this.m_header(vn, entry), ];
-
         if (enable_entry_edit) {
             vn.state.edit_mode = true;
             enable_entry_edit = false;
         }
+
+        let card = [ this.m_header(vn, entry), ];
 
         if (vn.state.edit_mode) {
             card.push(m("div", { class: "card-content", style: "padding: 0.5rem" },
