@@ -18,6 +18,21 @@ renderer.code = function(code, lang) {
     } else {
         return "<pre>" + code + "</pre>";
     }
+};
+var listitem_rendered_entry;
+var listitem_checkbox_index;
+renderer.checkbox = function(checked) {
+    let value = checked ? "checked=\"1\"" : "";
+    let idx = listitem_checkbox_index;
+    listitem_checkbox_index = listitem_checkbox_index + 1;
+    return "<input checkidx=\"" + idx + "\" entry_id=\"" + listitem_rendered_entry.id() + "\" style=\"margin-right: 0.5rem\" type=\"checkbox\" " + value + " oninput=\"checkbox_input(this)\">";
+}
+renderer.listitem = function(text, task, checked) {
+    if (task) {
+        return "<li style=\"list-style: none\"><label class=\"checkbox\">" + text + "</label></li>";
+    } else {
+        return "<li>" + text + "</li>";
+    }
 }
 const markedOptions = {
     renderer: renderer,
@@ -33,6 +48,18 @@ var recent_entries = null;
 var edit_entry_id = null;
 var enable_entry_edit = false;
 var modal = null;
+
+window.checkbox_input = function(e, v) {
+    let entry_id = parseInt(e.attributes.getNamedItem("entry_id").nodeValue);
+    if (!entry_id || !(entry_id > 0))
+        return;
+    let check_idx = parseInt(e.attributes.getNamedItem("checkidx").nodeValue);
+    if (!entry_id || !(entry_id > 0))
+        return;
+    let entry = get_entry_by_id(entry_id);
+    entry.set_checkbox(check_idx, e.parentElement.innerText, !!e.checked);
+    m.redraw();
+};
 
 function get_recent_valid_entry_id() {
     if (recent_entries && recent_entries.length > 0) {
@@ -55,6 +82,10 @@ function get_recent_entries() {
             edit_entry_id = get_recent_valid_entry_id();
         }
     });
+}
+
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
 
 function new_entry() {
@@ -94,6 +125,7 @@ function padl(s, c, l) {
     return s
 }
 
+let checkbox_re = /-\s+\[.\]\s+(.*)/g;
 let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -/;
 let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
@@ -153,12 +185,55 @@ class Entry {
         return this.entry.id == edit_entry_id;
     }
 
+    set_checkbox(idx, text, checked) {
+        let ts = this.get_timestamp();
+        let i = 0;
+        this.entry.body = this.entry.body.replace(checkbox_re, function(l, txt) {
+        console.log("RR", [l, txt, i, idx]);
+            if (idx == i) {
+                txt = txt.replace(/\s*\(\d+-\d+-\d+ \d+:\d+:\d+\)$/, "");
+                if (checked) {
+                    l = "- [x] " + txt + " (" + ts + ")";
+                } else {
+                    l = "- [ ] " + txt;
+                }
+            }
+            i = i + 1;
+            return l;
+        });
+        this.changed = true;
+    }
+
+    make_sure_newline_at_end() {
+        this.entry.body = this.entry.body.replace(/[\r\n]*$/, "\n");
+        this.changed = true;
+    }
+
     add_log() {
         let d = new Date();
+        this.make_sure_newline_at_end();
         this.entry.body +=
             "    " + padl("" + d.getHours(), "0", 2)
              + ":" + padl("" + d.getMinutes(), "0", 2)
              + " [00:00] - \n";
+        this.changed = true;
+    }
+
+    get_timestamp() {
+        let d = new Date();
+        return (
+                    padl("" + (d.getYear() + 1900),"0", 4)
+            + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
+            + "-" + padl("" + (d.getDate()),       "0", 2)
+            + " " + padl("" + (d.getHours()),      "0", 2)
+            + ":" + padl("" + (d.getMinutes()),    "0", 2)
+            + ":" + padl("" + (d.getSeconds()),    "0", 2));
+    }
+
+    add_todo() {
+        let d = new Date();
+        this.make_sure_newline_at_end();
+        this.entry.body += "- [ ] \n";
         this.changed = true;
     }
 
@@ -315,6 +390,8 @@ class EntryView {
                   entry.body())));
         } else {
             if (entry.body()) {
+                listitem_checkbox_index = 0;
+                listitem_rendered_entry = entry;
                 card.push(m("div", { class: "card-content",
                                      style: "padding: 0.5rem; padding-bottom: 0.3rem" },
                     m("div", { class: "content" },
@@ -345,9 +422,14 @@ class EntryView {
         card.push(
             m("footer", { class: "card-footer" }, [
                 m("div", { class: "card-footer-item is-size-7" },
-                    m("button", { class: btn_class,
-                                  onclick: function() { entry.add_log() } },
-                        "Log")),
+                    m("div", { class: "buttons has-addons is-centered" }, [
+                        m("button", { class: btn_class,
+                                      onclick: function() { entry.add_log() } },
+                            "Log"),
+                        m("button", { class: btn_class,
+                                      onclick: function() { entry.add_todo() } },
+                            "Todo"),
+                    ])),
                 m("div", { class: "card-footer-item is-size-7" },
                     m("button", { class: btn_class,
                                   onclick: function() { entry.save() } },
