@@ -88,6 +88,10 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
 
+function open_diary() {
+    // search entries with current date and "diary,timelog" for super quick access.
+}
+
 function new_entry() {
     m.request({ method: "POST", url: "/journal/data/entries", body: { tags: "new", body: "" } })
      .then(function(data) {
@@ -314,18 +318,14 @@ class EntryView {
                         },
                       "")));
             ht.push(m_icon_btn(
+                "fas fa-level-up-alt", function() {
+                     edit_entry_id = entry.id();
+                     enable_entry_edit = true;
+                }));
+            ht.push(m_icon_btn(
                 "fas fa-file", function() { vn.state.edit_mode = false; }));
         } else {
             ht.push(m("p", { class: "card-header-title" }, entry.tags()));
-            ht.push(m_icon_btn(
-                "fas fa-edit", function() {
-                     if (vn.attrs.center_on_edit) {
-                         edit_entry_id = entry.id();
-                         enable_entry_edit = true;
-                     } else {
-                         vn.state.edit_mode = true;
-                     }
-                }));
 
             if (!entry.is_edited_entry()) {
                 if (vn.state.show_full) {
@@ -338,6 +338,15 @@ class EntryView {
                         function() { vn.state.show_full = true; }));
                 }
             }
+            ht.push(m_icon_btn(
+                "fas fa-level-up-alt", function() {
+                     edit_entry_id = entry.id();
+                     enable_entry_edit = true;
+                }));
+            ht.push(m_icon_btn(
+                "fas fa-edit", function() {
+                     vn.state.edit_mode = true;
+                }));
         }
 
         return m("header", { class: "card-header" }, [ ht ]);
@@ -367,6 +376,7 @@ class EntryView {
 
         let show_full = (
             entry.is_edited_entry()
+            || entry.uncommitted_changes()
             || vn.state.show_full
             || vn.state.edit_mode);
 
@@ -392,14 +402,19 @@ class EntryView {
             if (entry.body()) {
                 listitem_checkbox_index = 0;
                 listitem_rendered_entry = entry;
-                card.push(m("div", { class: "card-content",
-                                     style: "padding: 0.5rem; padding-bottom: 0.3rem" },
-                    m("div", { class: "content" },
-                        m.trust(marked(
-                            show_full
-                                ? entry.full_body()
-                                : entry.short_body(),
-                            markedOptions)))));
+
+                let content = m("div", { class: "card-content",
+                                         style: "padding: 0.5rem; padding-bottom: 0.3rem" },
+                        m("div", { class: "content" },
+                            m.trust(marked(
+                                show_full
+                                    ? entry.full_body()
+                                    : entry.short_body(),
+                                markedOptions))));
+                if (entry.uncommitted_changes()) {
+                    content = m("div", { style: "border: 1px solid red" }, content);
+                }
+                card.push(content);
             }
         }
 
@@ -547,6 +562,10 @@ var TopLevel = {
                                       style: "margin-bottom: 1rem",
                                       onclick: function() { new_entry() } },
                             "New"),
+                        m("button", { class: "button is-primary",
+                                      style: "margin-bottom: 1rem",
+                                      onclick: function() { open_diary() } },
+                            "Diary"),
                         m(EntryView, { entry_id: edit_entry_id }),
                     ]),
 //                    m("div", { class: "column" }, "Search Column Here"),
