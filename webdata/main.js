@@ -419,26 +419,28 @@ class EntryView {
             ])
         ));
 
-        card.push(
-            m("footer", { class: "card-footer" }, [
-                m("div", { class: "card-footer-item is-size-7" },
-                    m("div", { class: "buttons has-addons is-centered" }, [
+        if (show_full) {
+            card.push(
+                m("footer", { class: "card-footer" }, [
+                    m("div", { class: "card-footer-item is-size-7" },
+                        m("div", { class: "buttons has-addons is-centered" }, [
+                            m("button", { class: btn_class,
+                                          onclick: function() { entry.add_log() } },
+                                "Log"),
+                            m("button", { class: btn_class,
+                                          onclick: function() { entry.add_todo() } },
+                                "Todo"),
+                        ])),
+                    m("div", { class: "card-footer-item is-size-7" },
                         m("button", { class: btn_class,
-                                      onclick: function() { entry.add_log() } },
-                            "Log"),
+                                      onclick: function() { entry.save() } },
+                            "Save")),
+                    m("div", { class: "card-footer-item is-size-7" },
                         m("button", { class: btn_class,
-                                      onclick: function() { entry.add_todo() } },
-                            "Todo"),
-                    ])),
-                m("div", { class: "card-footer-item is-size-7" },
-                    m("button", { class: btn_class,
-                                  onclick: function() { entry.save() } },
-                        "Save")),
-                m("div", { class: "card-footer-item is-size-7" },
-                    m("button", { class: btn_class,
-                                  onclick: function() { entry.ask_del() } },
-                        "Delete")),
-            ]));
+                                      onclick: function() { entry.ask_del() } },
+                            "Delete")),
+                ]));
+        }
 
         return m("div", { class: "card" }, card)
     }
