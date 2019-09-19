@@ -27,6 +27,14 @@ renderer.checkbox = function(checked) {
     listitem_checkbox_index = listitem_checkbox_index + 1;
     return "<input checkidx=\"" + idx + "\" entry_id=\"" + listitem_rendered_entry.id() + "\" style=\"margin-right: 0.5rem\" type=\"checkbox\" " + value + " oninput=\"checkbox_input(this)\">";
 }
+renderer.link = function(href, title, text) {
+    let m = href.match(/^ent:(\d+)$/);
+    if (m) {
+        return "<a href=\"#!/entry/" + m[1] + "\" alt=\"entry " + m[1] + "\">[entry " + m[1]  + "]</a>";
+    } else {
+        return "<a href=\"" + href + "\" alt=\"" + title + "\">" + text + "</a>";
+    }
+};
 renderer.listitem = function(text, task, checked) {
     if (task) {
         return "<li style=\"list-style: none\"><label class=\"checkbox\">" + text + "</label></li>";
@@ -71,6 +79,13 @@ function get_recent_valid_entry_id() {
     return null;
 }
 
+function goto_entry(id) {
+    console.log("GOTO ENTRY:", [id]);
+    m.route.set("/entry/:id", { id: id });
+    enable_entry_edit = true;
+    document.getElementById("new_button").scrollIntoView();
+}
+
 function get_recent_entries() {
     m.request({ method: "GET", url: "/journal/search/entries/recent"
     }).then(function(data) {
@@ -79,7 +94,7 @@ function get_recent_entries() {
         recent_entries = data;
 
         if (recent_entries.length > 0 && edit_entry_id == null) {
-            edit_entry_id = get_recent_valid_entry_id();
+            goto_entry(get_recent_valid_entry_id());
         }
     });
 }
@@ -97,8 +112,7 @@ function new_entry() {
      .then(function(data) {
          console.log("NEW ENTRY:", data);
          get_recent_entries();
-         edit_entry_id = data[0].new_entry_id;
-         enable_entry_edit = true;
+         goto_entry(data[0].new_entry_id);
      });
 }
 
@@ -151,6 +165,7 @@ class Entry {
 
     load_entry_id(id) {
         let self = this;
+        self.entry = { body: "loading...", tags: "loading..." };
         console.log("GET ENTRY:", id);
         if (self.entry_id == id) return;
 
@@ -178,6 +193,7 @@ class Entry {
         this.save(function() {
             if (self.entry.id == edit_entry_id) {
                 edit_entry_id = null;
+                m.route.set("/main");
                 enable_entry_edit = false;
             }
             get_recent_entries();
@@ -298,9 +314,9 @@ class Entry {
 function m_icon_btn(icon_class, cb) {
     return m("a", { class: "card-header-icon",
                     style: "padding: 0.5rem",
-                    href: "#/",
+                    href: "#!",
                     ["aria-label"]: "more options",
-                    onclick: cb },
+                    onclick: function(ev) { ev.preventDefault(); cb(ev) } },
         m("span", { class: "icon" },
             m("i", { class: icon_class, ["aria-hidden"]: "true" })));
 }
@@ -320,8 +336,7 @@ class EntryView {
                       "")));
             ht.push(m_icon_btn(
                 "fas fa-level-up-alt", function() {
-                     edit_entry_id = entry.id();
-                     enable_entry_edit = true;
+                     goto_entry(entry.id());
                 }));
             ht.push(m_icon_btn(
                 "fas fa-file", function() { vn.state.edit_mode = false; }));
@@ -341,8 +356,7 @@ class EntryView {
             }
             ht.push(m_icon_btn(
                 "fas fa-level-up-alt", function() {
-                     edit_entry_id = entry.id();
-                     enable_entry_edit = true;
+                     goto_entry(entry.id());
                 }));
             ht.push(m_icon_btn(
                 "fas fa-edit", function() {
@@ -356,8 +370,10 @@ class EntryView {
     view(vn) {
         let entry = get_entry_by_id(vn.attrs.entry_id);
 
+        let id = vn.attrs.is_top_editor ? "top_editor" : null;
+
         if (!entry) {
-            return m("div", { class: "card" },
+            return m("div", { class: "card", id: id },
                 m("header", { class: "card-header" }, [
                     m("div", { class: "card-header-icon" }, [
                         m("span", "[" + vn.attrs.entry_id + "]"),
@@ -468,7 +484,7 @@ class EntryView {
                 ]));
         }
 
-        return m("div", { class: "card" }, card)
+        return m("div", { class: "card", id: id }, card)
     }
 };
 //<div class="modal">
@@ -560,16 +576,20 @@ var RecentEntries = {
 
 var TopLevel = {
     oninit: function(vn) {
-        vn.state.body = "123";
         get_recent_entries();
     },
     view: function(vn) {
+        if (vn.attrs.id != null) {
+            edit_entry_id = vn.attrs.id;
+        }
+
         return m("section", { class: "section" }, [
                 m(ModalView),
 //            m("div", { class: "container" }, [
                 m("div", { class: "columns is-3" }, [
                     m("div", { class: "column" },  [
                         m("button", { class: "button is-primary",
+                                      id: "new_button",
                                       style: "margin-bottom: 1rem",
                                       onclick: function() { new_entry() } },
                             "New"),
@@ -577,7 +597,7 @@ var TopLevel = {
                                       style: "margin-bottom: 1rem",
                                       onclick: function() { open_diary() } },
                             "Diary"),
-                        m(EntryView, { entry_id: edit_entry_id }),
+                        m(EntryView, { is_top_editor: true, entry_id: edit_entry_id }),
                     ]),
 //                    m("div", { class: "column" }, "Search Column Here"),
                     m("div", { class: "column" },  m(RecentEntries)),
@@ -604,5 +624,11 @@ document.addEventListener("keypress", function(e) {
 
 //console.log(marked(markdownStr, markedOptions))
 //hljs.initHighlightingOnLoad();
-console.log("GO;", root);
-m.mount(document.body, TopLevel);
+console.log("GO;", document.body);
+//m.mount(document.body, TopLevel);
+
+m.route(document.body, '/main', {
+    '/main': TopLevel,
+    '/entry/:id': TopLevel,
+});
+//m.route.set('/main');
