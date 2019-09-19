@@ -1,11 +1,13 @@
 !@import u util;
 
+!@import a auth;
+
 !:global auth_realm     = \ "wctor_journal" ;
 !:global local_endpoint = \ "0.0.0.0:19099" ;
 !:global file_prefix    = { || "/journal/files" };
 !:global need_auth      = { || $t };
-!:global auth           = { !(method, path, auth) = @;
-                            auth.1 == "wctor:******" };
+!:global auth           = { a:auth[[@]] };
+
 !parse_tags = {
     !tags = _;
     tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
