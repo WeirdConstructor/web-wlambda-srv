@@ -297,6 +297,7 @@ class Entry {
 
 function m_icon_btn(icon_class, cb) {
     return m("a", { class: "card-header-icon",
+                    style: "padding: 0.5rem",
                     href: "#/",
                     ["aria-label"]: "more options",
                     onclick: cb },
@@ -309,7 +310,7 @@ class EntryView {
         let ht = [];
         if (vn.state.edit_mode) {
             ht.push(
-                m("p", { class: "card-header-title" },
+                m("p", { class: "card-header-title", style: "padding: 0.5rem" },
                     m("input",
                       { class: "input is-small",
                         type: "text",
@@ -325,7 +326,7 @@ class EntryView {
             ht.push(m_icon_btn(
                 "fas fa-file", function() { vn.state.edit_mode = false; }));
         } else {
-            ht.push(m("p", { class: "card-header-title" }, entry.tags()));
+            ht.push(m("p", { class: "card-header-title", style: "padding: 0.5rem" }, entry.tags()));
 
             if (!entry.is_edited_entry()) {
                 if (vn.state.show_full) {
@@ -361,7 +362,7 @@ class EntryView {
                     m("div", { class: "card-header-icon" }, [
                         m("span", "[" + vn.attrs.entry_id + "]"),
                     ]),
-                    m("div", { class: "card-header-title" }, [
+                    m("div", { class: "card-header-title", style: "padding: 0.5rem" }, [
                         m("progress",
                             { class: "progress is-small is-primary",
                               max: "100" },
@@ -404,7 +405,7 @@ class EntryView {
                 listitem_rendered_entry = entry;
 
                 let content = m("div", { class: "card-content",
-                                         style: "padding: 0.5rem; padding-bottom: 0.3rem" },
+                                         style: "padding: 0.5rem" },
                         m("div", { class: "content" },
                             m.trust(marked(
                                 show_full
@@ -420,8 +421,9 @@ class EntryView {
 
         let btn_class = "button is-outlined " + tint_class;
 
-        card.push(m("div", { class: "card-content" },
-            m("div", { class: "is-size-7 has-background-light columns" }, [
+        card.push(m("div", { class: "card-content",
+                             style: "padding: 0" },
+            m("div", { class: "is-size-7 has-background-light columns", style: "margin: 0" }, [
                 m("div", {class: "column is-2 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
                     m("p", entry.id()),
                 ]),
@@ -447,9 +449,18 @@ class EntryView {
                                 "Todo"),
                         ])),
                     m("div", { class: "card-footer-item is-size-7" },
-                        m("button", { class: btn_class,
-                                      onclick: function() { entry.save() } },
-                            "Save")),
+                        m("div", { class: "buttons has-addons is-centered" }, [
+                            m("button", { class: btn_class,
+                                          onclick: function() { entry.save() } },
+                                "Save"),
+                            m("button", { class: btn_class,
+                                          onclick: function() {
+                                             vn.state.edit_mode = false;
+                                             vn.state.show_full = true;
+                                             entry.save()
+                                          } },
+                                "Done"),
+                        ])),
                     m("div", { class: "card-footer-item is-size-7" },
                         m("button", { class: btn_class,
                                       onclick: function() { entry.ask_del() } },
