@@ -558,7 +558,7 @@ class SearchColumn {
         let cards = [];
         cards.push(
             m("div",
-                m("input", { style: "margin-bottom: 0.75rem;",
+                m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
                              type: "text",
                              onchange: function(ev) {
                     ev.preventDefault();
@@ -721,10 +721,10 @@ var TopLevel = {
                 m("div", { class: "columns is-3" }, [
                     m("div", { class: "column" },  [
                         m(EntryView, { is_top_editor: true, entry_id: edit_entry_id }),
+                        m("hr"),
+                        m(RecentEntries),
                     ]),
                     m(SearchColumn),
-                    m("div", { class: "column" },
-                        m(RecentEntries)),
                 ]),
             ])
         ]);
