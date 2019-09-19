@@ -136,7 +136,7 @@
 };
 
 !setup_db = {
-    db:connect_sqlite "journal.sqlite";
+    db:connect_sqlite "j.sqlite";
     db:exec $q"
         CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY,

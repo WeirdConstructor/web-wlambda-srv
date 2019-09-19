@@ -1,5 +1,9 @@
 "use strict";
 
+///
+/// Setup marked.js renderer
+///
+
 const renderer = new marked.Renderer();
 const doRenderCode = function(code, lang) {
     try {
@@ -8,6 +12,7 @@ const doRenderCode = function(code, lang) {
         return code;
     }
 }
+
 renderer.code = function(code, lang) {
     if (lang) {
         return `<pre><code class="hljs ${lang || ''}">${doRenderCode(code, lang)}</code></pre>`
@@ -15,14 +20,25 @@ renderer.code = function(code, lang) {
         return "<pre>" + code + "</pre>";
     }
 };
+
 var listitem_rendered_entry;
 var listitem_checkbox_index;
+
+function before_calling_marked_with_entry(entry) {
+    listitem_checkbox_index = 0;
+    listitem_rendered_entry = entry;
+}
+
 renderer.checkbox = function(checked) {
     let value = checked ? "checked=\"1\"" : "";
     let idx = listitem_checkbox_index;
     listitem_checkbox_index = listitem_checkbox_index + 1;
-    return "<input checkidx=\"" + idx + "\" entry_id=\"" + listitem_rendered_entry.id() + "\" style=\"margin-right: 0.5rem\" type=\"checkbox\" " + value + " oninput=\"checkbox_input(this)\">";
+    return ("<input checkidx=\"" + idx + "\" entry_id=\""
+        + listitem_rendered_entry.id()
+        + "\" style=\"margin-right: 0.5rem\" type=\"checkbox\" "
+        + value + " oninput=\"checkbox_input(this)\">");
 }
+
 renderer.link = function(href, title, text) {
     let m = href.match(/^ent:(\d+)$/);
     if (m) {
@@ -31,18 +47,18 @@ renderer.link = function(href, title, text) {
         return "<a href=\"" + href + "\" alt=\"" + title + "\">" + text + "</a>";
     }
 };
+
 renderer.listitem = function(text, task, checked) {
     if (task) {
-        return "<li style=\"list-style: none\"><label class=\"checkbox\">" + text + "</label></li>";
+        return (
+            "<li style=\"list-style: none\"><label class=\"checkbox\">" 
+            + text + "</label></li>");
     } else {
         return "<li>" + text + "</li>";
     }
 }
-const markedOptions = {
-    renderer: renderer,
-   // langPrefix: 'hljs ',
-   // highlight: (code, lang) => lang ? hljs.highlight(lang, code, true).value : hljs.highlightAuto(code).value
-}
+
+const markedOptions = { renderer: renderer, }
 
 var root = document.body;
 
@@ -298,12 +314,37 @@ class Entry {
             return l;
         }).join("\n")
     }
+
+
     short_body() {
         let v = this.entry.body.split(/\n/);
         let out = [];
-        for (let i = 0; i < 5; i++)
+        for (let i = 0; i < 10; i++) {
             out.push(v[i]);
-        return out.join("\n");
+        }
+        return [out.join("\n"), v.length > 10];
+    }
+
+    rendered_body(show_full, vn) {
+        let body;
+        let cont_link = false;
+        if (show_full) {
+            body = this.full_body();
+        } else {
+            let r = this.short_body();
+            body = r[0];
+            cont_link = r[1];
+        }
+
+        return [
+            m.trust(marked(body, markedOptions)),
+            (cont_link
+                ? m("a", { onclick: function(e) {
+                        e.preventDefault();
+                        vn.state.show_full = true;
+                    } }, "...")
+                : m("span"))
+        ]
     }
 };
 
@@ -337,7 +378,8 @@ class EntryView {
             ht.push(m_icon_btn(
                 "fas fa-file", function() { vn.state.edit_mode = false; }));
         } else {
-            ht.push(m("p", { class: "card-header-title", style: "padding: 0.5rem" }, entry.tags()));
+            ht.push(m("p", { class: "card-header-title", style: "padding: 0.5rem" },
+                      entry.tags()));
 
             if (!entry.is_edited_entry()) {
                 if (vn.state.show_full) {
@@ -374,7 +416,8 @@ class EntryView {
                     m("div", { class: "card-header-icon" }, [
                         m("span", "[" + vn.attrs.entry_id + "]"),
                     ]),
-                    m("div", { class: "card-header-title", style: "padding: 0.5rem" }, [
+                    m("div", { class: "card-header-title",
+                               style: "padding: 0.5rem" }, [
                         m("progress",
                             { class: "progress is-small is-primary",
                               max: "100" },
@@ -411,21 +454,20 @@ class EntryView {
                         entry.set_body(e.target.value);
                     } },
                   entry.body())));
+
         } else {
             if (entry.body()) {
-                listitem_checkbox_index = 0;
-                listitem_rendered_entry = entry;
+                before_calling_marked_with_entry(entry);
+
+                let body_array = entry.rendered_body(show_full, vn);
 
                 let content = m("div", { class: "card-content",
                                          style: "padding: 0.5rem" },
-                        m("div", { class: "content" },
-                            m.trust(marked(
-                                show_full
-                                    ? entry.full_body()
-                                    : entry.short_body(),
-                                markedOptions))));
+                    m("div", { class: "content" }, body_array));
+
                 if (entry.uncommitted_changes()) {
-                    content = m("div", { style: "border: 1px solid red" }, content);
+                    content = m("div", { style: "border: 1px solid red" },
+                                content);
                 }
                 card.push(content);
             }
@@ -433,22 +475,25 @@ class EntryView {
 
         let btn_class = "button is-outlined " + tint_class;
 
-        card.push(m("div", { class: "card-content",
-                             style: "padding: 0" },
-            m("div", { class: "is-size-7 has-background-light columns", style: "margin: 0" }, [
-                m("div", {class: "column is-2 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
-                    m("p", entry.id()),
-                ]),
-                m("div", {class: "column is-5 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
-                    m("div", entry.mtime()),
-                ]),
-                m("div", {class: "column is-5 has-text-centered", style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
-                    m("div", entry.ctime()),
-                ])
-            ])
-        ));
-
         if (show_full) {
+            card.push(m("div", { class: "card-content",
+                                 style: "padding: 0" },
+                m("div", { class: "is-size-7 has-background-light columns", style: "margin: 0" }, [
+                    m("div", { class: "column is-2 has-text-centered",
+                               style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                        m("div", entry.id()),
+                    ]),
+                    m("div", { class: "column is-5 has-text-centered",
+                               style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                        m("div", entry.mtime()),
+                    ]),
+                    m("div", { class: "column is-5 has-text-centered",
+                               style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                        m("div", entry.ctime()),
+                    ])
+                ])
+            ));
+
             card.push(
                 m("footer", { class: "card-footer" }, [
                     m("div", { class: "card-footer-item is-size-7" },
