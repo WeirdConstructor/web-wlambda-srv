@@ -1,14 +1,10 @@
 "use strict";
-console.log("OK", [marked, m]);
-
 
 const renderer = new marked.Renderer();
 const doRenderCode = function(code, lang) {
     try {
         return lang ? hljs.highlight(lang, code, true).value : code;
-//            hljs.highlightAuto(code).value;
     } catch (e) {
-//        console.log("highlight error:", e);
         return code;
     }
 }
@@ -83,7 +79,7 @@ function goto_entry(id) {
     console.log("GOTO ENTRY:", [id]);
     m.route.set("/entry/:id", { id: id });
     enable_entry_edit = true;
-    document.getElementById("new_button").scrollIntoView();
+    document.getElementById("top").scrollIntoView();
 }
 
 function get_recent_entries() {
@@ -487,13 +483,6 @@ class EntryView {
         return m("div", { class: "card", id: id }, card)
     }
 };
-//<div class="modal">
-//  <div class="modal-background"></div>
-//  <div class="modal-content">
-//    <!-- Any other Bulma elements you want -->
-//  </div>
-//  <button class="modal-close is-large" aria-label="close"></button>
-//</div>
 
 class ModalView {
     view(vn) {
@@ -574,6 +563,48 @@ var RecentEntries = {
     },
 };
 
+class NavbarView {
+    view(vn) {
+        let active = "";
+        if (vn.state.menu_active) {
+            active = " is-active";
+        }
+
+        return m("nav", { class: "navbar is-info",
+                          role: "navigation",
+                          ["aria-label"]: "main navigation" }, [
+            m("div", { class: "navbar-brand" },
+                m("a", { class: "navbar-burger burger" + active,
+                         role: "button",
+                         onclick: function() {
+                            vn.state.menu_active = !vn.state.menu_active;
+                         },
+                         ["aria-label"]: "menu",
+                         ["aria-expanded"]: "false",
+                         ["data-target"]: "navbarBasicExample" }, [
+                    m("span", { ["aria-hidden"]: "true" }),
+                    m("span", { ["aria-hidden"]: "true" }),
+                    m("span", { ["aria-hidden"]: "true" })
+                ])),
+            m("div", { id: "navbarBasicExample", class: "navbar-menu" + active }, [
+                m("div", { class: "navbar-start" }, [
+                    m("div", { class: "navbar-item" },
+                        m("div", { class: "buttons" }, [
+                            m("a", { class: "button is-primary",
+                                     onclick: function(ev) { new_entry(); } },
+                                "New"),
+                            m("a", { class: "button is-light",
+                                     onclick: function(ev) { open_diary(); } },
+                                "Diary"),
+                        ]))
+                ]),
+                m("div", { class: "navbar-end" }, [
+                ]),
+            ]),
+        ])
+    }
+}
+
 var TopLevel = {
     oninit: function(vn) {
         get_recent_entries();
@@ -583,26 +614,17 @@ var TopLevel = {
             edit_entry_id = vn.attrs.id;
         }
 
-        return m("section", { class: "section" }, [
+        return m("div", { id: "top" }, [
+            m(NavbarView),
+            m("section", { class: "section", style: "padding-top: 0.5rem" }, [
                 m(ModalView),
-//            m("div", { class: "container" }, [
                 m("div", { class: "columns is-3" }, [
                     m("div", { class: "column" },  [
-                        m("button", { class: "button is-primary",
-                                      id: "new_button",
-                                      style: "margin-bottom: 1rem",
-                                      onclick: function() { new_entry() } },
-                            "New"),
-                        m("button", { class: "button is-primary",
-                                      style: "margin-bottom: 1rem",
-                                      onclick: function() { open_diary() } },
-                            "Diary"),
                         m(EntryView, { is_top_editor: true, entry_id: edit_entry_id }),
                     ]),
-//                    m("div", { class: "column" }, "Search Column Here"),
                     m("div", { class: "column" },  m(RecentEntries)),
                 ]),
-//            ]),
+            ])
         ]);
     },
 };
@@ -622,13 +644,9 @@ document.addEventListener("keypress", function(e) {
     }
 });
 
-//console.log(marked(markdownStr, markedOptions))
-//hljs.initHighlightingOnLoad();
 console.log("GO;", document.body);
-//m.mount(document.body, TopLevel);
 
 m.route(document.body, '/main', {
     '/main': TopLevel,
     '/entry/:id': TopLevel,
 });
-//m.route.set('/main');
