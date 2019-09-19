@@ -6,7 +6,6 @@
 !:global need_auth      = { || $t };
 !:global auth           = { !(method, path, auth) = @;
                             auth.1 == "wctor:******" };
-
 !parse_tags = {
     !tags = _;
     tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
@@ -30,17 +29,35 @@
             $q"^POST:/journal/search/entries", {||
                 !stmt = $[];
                 std:push stmt
-                    $q"SELECT e.* FROM entries e
-                       LEFT JOIN tag_entries te ON e.id = te.entry_id
-                       LEFT JOIN tags t ON t.id = te.tag_id
-                       WHERE (1=0)";
+                    $q"SELECT * FROM entries WHERE id IN
+                       (SELECT DISTINCT e.id FROM entries e
+                        LEFT JOIN tag_entries te ON e.id = te.entry_id
+                        LEFT JOIN tags t ON t.id = te.tag_id
+                        WHERE (e.deleted <> 1)";
 
-                !tag_vec = parse_tags data.tags;
+                !args = $[];
+                (not ~ is_none data.search) {
+                    !sql_srch = u:search_to_sql data.search
+                        "t.name" "(e.tags || ' ' || e.body)" "mtime" "ctime";
 
-                data.tags {|| std:push stmt ~ "OR t.name=?"; };
-                std:push stmt "ORDER BY mtime DESC";
+                    (sql_srch != "") {
+                        std:push stmt "AND";
+                        std:push stmt sql_srch.where;
+                    };
+                    std:push stmt ")";
+                    (not ~ is_none sql_srch.order) {
+                        std:push stmt "ORDER BY ";
+                        std:push stmt sql_srch.order;
+                    };
+                    std:push stmt " LIMIT 25";
+                    std:append args sql_srch.binds;
+                } {
+                    std:push stmt ")";
+                };
                 !stmt = std:str:join " " stmt;
-                return :from_req ~ db:exec stmt data.tags;
+                std:displayln "SEARCH: " stmt;
+                std:prepend args stmt;
+                return :from_req ~ db:exec[[args]];
             },
             $q"^GET:/journal/data/entries/(\d+)", {||
                 return :from_req ~
