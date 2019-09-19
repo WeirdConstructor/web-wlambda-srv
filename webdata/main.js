@@ -120,12 +120,23 @@ function open_diary() {
 }
 
 function new_entry() {
-    m.request({ method: "POST", url: "/journal/data/entries", body: { tags: "new", body: "" } })
-     .then(function(data) {
-         console.log("NEW ENTRY:", data);
-         get_recent_entries();
-         goto_entry(data[0].new_entry_id);
-     });
+    m.request({
+        method: "POST",
+        url: "/journal/data/entries",
+        body: { tags: "new", body: "" }
+    }).then(function(data) {
+        console.log("NEW ENTRY:", data);
+        get_recent_entries();
+        goto_entry(data[0].new_entry_id);
+    });
+}
+
+function load_cache(id, e) {
+    if (e) {
+        entries[id] = new Entry(id, e);
+    } else {
+        entries[id] = new Entry(id);
+    }
 }
 
 var entries = {};
@@ -137,14 +148,14 @@ function get_entry_by_id(id) {
     } else if (recent_entries) {
         recent_entries.map(function(e) {
             if (e.id == id) {
-                entries[id] = new Entry(id, e);
+                load_cache(id, e);
             }
         });
         if (!entries[id]) {
-            entries[id] = new Entry(id);
+            load_cache(id);
         }
     } else {
-        entries[id] = new Entry(id);
+        load_cache(id);
     }
 
     return entries[id];
@@ -529,6 +540,50 @@ class EntryView {
     }
 };
 
+function search(stxt, cb) {
+    m.request({
+        method: "POST",
+        url: "/journal/search/entries",
+        body: { search: stxt },
+    }).then(function(data) {
+        self.changed = false;
+        if (cb) cb(data);
+    });
+}
+
+class SearchColumn {
+    view(vn) {
+        if (!vn.state.entries) vn.state.entries = [];
+
+        let cards = [];
+        cards.push(
+            m("div",
+                m("input", { style: "margin-bottom: 0.75rem;",
+                             type: "text",
+                             onchange: function(ev) {
+                    ev.preventDefault();
+                    let srchtxt = ev.target.value;
+
+                    search(srchtxt, function(entries) {
+                        vn.state.entries = entries;
+                        entries.map(function(e) {
+                            load_cache(e.id, e);
+                        });
+                    });
+                } })));
+
+        vn.state.entries.map(function(e) {
+            cards.push(
+                m("div", { class: "is-size-7",
+                           style: "margin-bottom: 0.75em" },
+                    m(EntryView, { entry_id: e.id })));
+        });
+
+        return m("div", { class: "column" }, cards);
+
+    }
+}
+
 class ModalView {
     view(vn) {
         if (modal) {
@@ -554,39 +609,39 @@ class ModalView {
     }
 };
 
-var search_state = [{}, {}];
+//var search_state = [{}, {}];
 
-function do_search(idx, str) {
-}
-
-var SearchColumnView = {
-    view: function(vn) {
-        console.log("RED RE:", recent_entries);
-        let results = search_state[vn.attrs.srcidx].results;
-        let res_node;
-        if (results) {
-//            res_node = m("div", {}, [
-//                search_state[vn.attrs.srcidx].
-//            ]);
-//                recent_entries.filter(e => !e.deleted).map(function(e) {
-//                    return m("div", { class: "is-size-7", style: "margin-bottom: 0.75em" },
-//                        m(EntryView, { entry_id: e.id, center_on_edit: true }))
-//                }));
-        } else {
-            res_node = m("div");
-        }
-
-        return m("div", {}, [
-            m("div", { class: "columns" }, [
-                m("div", { class: "column" },
-                    m("input", { class: "input is-small", type: "text", onchange: function(e) {
-                        do_search(vn.attrs.srcidx, e.target.value)
-                    } })),
-            ]),
-            res_node,
-        ]);
-    },
-};
+//function do_search(idx, str) {
+//}
+//
+//var SearchColumnView = {
+//    view: function(vn) {
+//        console.log("RED RE:", recent_entries);
+//        let results = search_state[vn.attrs.srcidx].results;
+//        let res_node;
+//        if (results) {
+////            res_node = m("div", {}, [
+////                search_state[vn.attrs.srcidx].
+////            ]);
+////                recent_entries.filter(e => !e.deleted).map(function(e) {
+////                    return m("div", { class: "is-size-7", style: "margin-bottom: 0.75em" },
+////                        m(EntryView, { entry_id: e.id, center_on_edit: true }))
+////                }));
+//        } else {
+//            res_node = m("div");
+//        }
+//
+//        return m("div", {}, [
+//            m("div", { class: "columns" }, [
+//                m("div", { class: "column" },
+//                    m("input", { class: "input is-small", type: "text", onchange: function(e) {
+//                        do_search(vn.attrs.srcidx, e.target.value)
+//                    } })),
+//            ]),
+//            res_node,
+//        ]);
+//    },
+//};
 
 var RecentEntries = {
     oninit: function(vn) {
@@ -667,7 +722,9 @@ var TopLevel = {
                     m("div", { class: "column" },  [
                         m(EntryView, { is_top_editor: true, entry_id: edit_entry_id }),
                     ]),
-                    m("div", { class: "column" },  m(RecentEntries)),
+                    m(SearchColumn),
+                    m("div", { class: "column" },
+                        m(RecentEntries)),
                 ]),
             ])
         ]);

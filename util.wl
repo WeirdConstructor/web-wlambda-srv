@@ -14,12 +14,11 @@
 };
 
 !analyze_terms = \:ret {
-    std:re:match $q/^([-+\*])(.*)$/ _ {
+    std:re:match $q/^([+\*])(.*)$/ _ {
         !op   = _.1;
         !term = _.2;
         return :ret ~ match op
             :?s "+" {|| $[:and, term] }
-            :?s "-" {|| $[:not, term] }
             {|| $[:txt, term] };
     };
 
@@ -45,11 +44,11 @@
 !@export parse_search  parse_search;
 
 !@export search_to_sql {
-    !or = parse_search _;
-    !colname = _1;
+    !or         = parse_search _;
+    !colname    = _1;
     !txtcolname = _2;
-    !order_m = _3;
-    !order_c = _4;
+    !order_m    = _3;
+    !order_c    = _4;
 
     !out_binds = $[];
     !sql = std:str:join " OR " ~ or.or_terms {
@@ -57,9 +56,8 @@
             (_ { !(typ, s) = _;
                 std:push out_binds s;
                 std:str:cat "("
-                    ((typ == :not) { std:str:cat "not(instr(lower(" colname "), lower(?)))"; } {
-                    (typ == :txt)  { std:str:cat "instr(lower(" txtcolname "), lower(?))"; }
-                                   { std:str:cat "instr(lower(" colname "), lower(?))"; } })
+                    ((typ == :txt)  { std:str:cat "instr(lower(" txtcolname "), lower(?))"; }
+                                    { std:str:cat "instr(lower(" colname "), lower(?))"; })
                 ")";
             } | std:str:join " AND ")
         ")";

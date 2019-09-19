@@ -35,7 +35,7 @@
                        (SELECT DISTINCT e.id FROM entries e
                         LEFT JOIN tag_entries te ON e.id = te.entry_id
                         LEFT JOIN tags t ON t.id = te.tag_id
-                        WHERE (e.deleted <> 1)";
+                        WHERE (e.deleted <> 1) AND ((1=1)";
 
                 !args = $[];
                 (not ~ is_none data.search) {
@@ -46,7 +46,7 @@
                         std:push stmt "AND";
                         std:push stmt sql_srch.where;
                     };
-                    std:push stmt ")";
+                    std:push stmt "))";
                     (not ~ is_none sql_srch.order) {
                         std:push stmt "ORDER BY ";
                         std:push stmt sql_srch.order;
