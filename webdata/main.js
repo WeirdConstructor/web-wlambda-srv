@@ -70,6 +70,12 @@ var enable_entry_edit = false;
 var new_entry_tags = null;
 var modal = null;
 
+function http_err(e) {
+    modal = {};
+    modal.cb = function() {};
+    modal.text = "HTTP ERROR: " + e.message;
+}
+
 window.checkbox_input = function(e, v) {
     let entry_id = parseInt(e.attributes.getNamedItem("entry_id").nodeValue);
     if (!entry_id || !(entry_id > 0))
@@ -120,7 +126,7 @@ function get_recent_entries() {
         if (recent_entries.length > 0 && edit_entry_id == null) {
             goto_entry(get_recent_valid_entry_id());
         }
-    });
+    }).catch(http_err);
 }
 
 function escapeRegExp(string) {
@@ -150,7 +156,7 @@ function new_entry(cb) {
         get_recent_entries();
         goto_entry(data[0].new_entry_id);
         if (cb) cb(data[0].new_entry_id);
-    });
+    }).catch(http_err);
 }
 
 function load_cache(id, e) {
@@ -214,7 +220,7 @@ class Entry {
         m.request({ method: "GET", url: "/journal/data/entries/" + id })
          .then(function(data) {
             self.set_entry(data);
-         });
+         }).catch(http_err);
     }
 
     uncommitted_changes() {
@@ -306,9 +312,11 @@ class Entry {
             url: "/journal/data/entries/" + this.entry.id,
             body: this.entry
         }).then(function(data) {
+            console.log("O", data);
+            self.entry.mtime = data[2].mtime;
             self.changed = false;
             if (done_cb) done_cb();
-        });
+        }).catch(http_err);
     }
 
     set_tags(t) { if (this.entry.tags != t) this.changed = true; this.entry.tags = t; }
@@ -570,7 +578,7 @@ function search(stxt, cb) {
     }).then(function(data) {
         self.changed = false;
         if (cb) cb(data);
-    });
+    }).catch(http_err);
 }
 
 class SearchColumn {
@@ -596,7 +604,7 @@ class SearchColumn {
             }).then(function(data) {
                 vn.state.input_txt = data.search;
                 self.do_search(vn, data.search);
-            });
+            }).catch(http_err);
         }
 
         let cards = [];

@@ -89,6 +89,19 @@
                 !entry_id = _.1;
                 std:displayln "DATA SAVE:" _ data;
 
+                (not ~ is_none data.mtime) {
+                    !mt =_? :from_req ~
+                        db:exec $q"SELECT id, mtime FROM entries WHERE
+                                   id = ? AND mtime > ?" data.id data.mtime;
+                    (not ~ is_none mt.0.mtime) {
+                        std:displayln "OUT OF DATE: " mt.0 data;
+                        return :from_req $e ${
+                            status = 403,
+                            data = $["outofdate", std:ser:json data]
+                        };
+                    }
+                };
+
                 _? :from_req ~
                     db:exec
                         "UPDATE entries SET tags=?,body=?,deleted=?,mtime=datetime('now') WHERE id=?"
@@ -113,9 +126,15 @@
                             $q"INSERT INTO tag_entries (tag_id, entry_id)
                                VALUES(?,?)" _ entry_id;
                 };
-                return :from_req [ "ok", entry_id ];
+
+                !e = _? :from_req ~
+                    db:exec "SELECT * FROM entries WHERE id=?" entry_id;
+                std:displayln "SAVE ENTRY" e;
+                return :from_req $[ "ok", entry_id, e.0 ];
             },
             $q"^POST:/journal/data/entries", {||
+                std:displayln "POST NEW" data;
+
                 _? :from_req ~
                     db:exec
                         "INSERT INTO entries (tags, body) VALUES(?,?)"
@@ -144,11 +163,12 @@
                     db:exec "SELECT * FROM entries WHERE id=?" _.1;
             },
         ];
-        $e "No URL Handler!"
+        $e $["No URL Handler!", t]
     };
 
-    (is_err data) { data }
-    { ${ data = data } };
+    (is_err data) {
+        (is_map ~ unwrap_err data) { unwrap_err data } { data };
+    } { ${ data = data } };
 };
 
 !setup_db = {
