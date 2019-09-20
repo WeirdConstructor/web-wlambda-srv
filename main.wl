@@ -16,12 +16,25 @@
     }
 };
 
+!save_search = {
+    db:exec $q"DELETE FROM searches WHERE search=?" _;
+    db:exec $q"INSERT INTO searches (search) VALUES(?)" _;
+};
+
+!get_search = {
+    !r = db:exec $q"SELECT search FROM searches ORDER BY id DESC LIMIT 1";
+    r.0
+};
+
 !:global req = {
     !(method, path, data) = @;
 
     !data = block :from_req {
         !t = std:str:cat method ":" path;
         u:regex_match t $[
+            $q"^GET:/journal/search/last", {||
+                return :from_req get_search[];
+            },
             $q"^GET:/journal/search/entries/recent", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries e
@@ -37,6 +50,7 @@
                         LEFT JOIN tags t ON t.id = te.tag_id
                         WHERE (e.deleted <> 1) AND ((1=1)";
 
+                save_search data.search;
                 !args = $[];
                 (not ~ is_none data.search) {
                     !sql_srch = u:search_to_sql data.search
@@ -173,10 +187,18 @@
         );
     ";
 
+    db:exec $q"
+        CREATE TABLE IF NOT EXISTS searches (
+            id INTEGER PRIMARY KEY,
+            search TEXT
+        );
+    ";
+
     !r = db:exec "SELECT value FROM system WHERE key=?" :version;
-    std:displayln "* db version = " r.(0).value;
+    std:displayln "* db version = " r.0.value;
     (not r) {
         db:exec "INSERT INTO system (key, value) VALUES(?, ?)" :version "1";
+    } {
     };
 };
 

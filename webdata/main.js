@@ -67,6 +67,7 @@ var c = 0;
 var recent_entries = null;
 var edit_entry_id = null;
 var enable_entry_edit = false;
+var new_entry_tags = null;
 var modal = null;
 
 window.checkbox_input = function(e, v) {
@@ -80,6 +81,19 @@ window.checkbox_input = function(e, v) {
     entry.set_checkbox(check_idx, e.parentElement.innerText, !!e.checked);
     m.redraw();
 };
+
+function padl(s, c, l) {
+    while (s.length < l) { s = c + s; } 
+    return s
+}
+
+function get_day() {
+    let d = new Date();
+    return (
+                padl("" + (d.getYear() + 1900),"0", 4)
+        + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
+        + "-" + padl("" + (d.getDate() + 1),       "0", 2));
+}
 
 function get_recent_valid_entry_id() {
     if (recent_entries && recent_entries.length > 0) {
@@ -115,11 +129,21 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
 
+
 function open_diary() {
-    // search entries with current date and "diary,timelog" for super quick access.
+    search(get_day(), function(entries) {
+        if (entries && entries.length > 0) {
+            entries.map(function(e) { load_cache(e.id, e) });
+            goto_entry(entries[0].id);
+        } else {
+            new_entry(function(entry_id) {
+                new_entry_tags = [entry_id, get_day() + ", timelog, diary"];
+            });
+        }
+    });
 }
 
-function new_entry() {
+function new_entry(cb) {
     m.request({
         method: "POST",
         url: "/journal/data/entries",
@@ -128,6 +152,7 @@ function new_entry() {
         console.log("NEW ENTRY:", data);
         get_recent_entries();
         goto_entry(data[0].new_entry_id);
+        if (cb) cb(data[0].new_entry_id);
     });
 }
 
@@ -161,18 +186,13 @@ function get_entry_by_id(id) {
     return entries[id];
 }
 
-function padl(s, c, l) {
-    while (s.length < l) { s = c + s; } 
-    return s
-}
-
 let checkbox_re = /-\s+\[.\]\s+(.*)/g;
 let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -/;
 let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
 class Entry {
     constructor(id, entry) {
-    console.log("CONSTR ENTR:", [id, entry]);
+        console.log("CONSTR ENTR:", [id, entry]);
         if (entry) {
             this.set_entry(entry)
         } else {
@@ -183,6 +203,11 @@ class Entry {
     set_entry(entry) {
         this.entry    = entry;
         this.entry_id = entry.id;
+
+        if (new_entry_tags && new_entry_tags[0] == entry.id) {
+            this.set_tags(new_entry_tags[1]);
+            new_entry_tags = null;
+        }
         console.log("SET ENTRY:", entry);
     }
 
@@ -301,6 +326,11 @@ class Entry {
     id()    { return this.entry.id }
     body()  { return this.entry.body }
     tags()  { return this.entry.tags }
+
+    set_tags(tstr) {
+        this.entry.tags = tstr;
+        this.changed = true;
+    }
 
     full_body()  {
         let v = this.entry.body.split(/\n/);
@@ -552,24 +582,43 @@ function search(stxt, cb) {
 }
 
 class SearchColumn {
+    do_search(vn, srchtxt) {
+        search(srchtxt, function(entries) {
+            vn.state.entries = entries;
+            if (entries)
+                entries.map(function(e) {
+                    load_cache(e.id, e);
+                });
+        });
+    }
+
     view(vn) {
+        let self = this;
+
         if (!vn.state.entries) vn.state.entries = [];
+        if (!vn.state.input_txt && !vn.state.last_search_req) {
+            vn.state.last_search_req = true;
+            m.request({
+                method: "GET",
+                url: "/journal/search/last",
+            }).then(function(data) {
+                vn.state.input_txt = data.search;
+                self.do_search(vn, data.search);
+            });
+        }
 
         let cards = [];
         cards.push(
             m("div",
                 m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
                              type: "text",
+                             id: "search",
+                             value: vn.state.input_txt,
                              onchange: function(ev) {
                     ev.preventDefault();
-                    let srchtxt = ev.target.value;
-
-                    search(srchtxt, function(entries) {
-                        vn.state.entries = entries;
-                        entries.map(function(e) {
-                            load_cache(e.id, e);
-                        });
-                    });
+                    let srchtxt = ev.target.value.toLowerCase();
+                    vn.state.input_txt = srchtxt;
+                    self.do_search(vn, srchtxt);
                 } })));
 
         vn.state.entries.map(function(e) {
@@ -696,6 +745,11 @@ class NavbarView {
                             m("a", { class: "button is-light",
                                      onclick: function(ev) { open_diary(); } },
                                 "Diary"),
+                            m("a", { class: "button is-link",
+                                     onclick: function(ev) {
+                                        document.getElementById("search").scrollIntoView();
+                                     } },
+                                "Search"),
                         ]))
                 ]),
                 m("div", { class: "navbar-end" }, [
