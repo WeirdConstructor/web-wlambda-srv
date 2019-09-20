@@ -106,7 +106,6 @@ function get_recent_valid_entry_id() {
 }
 
 function goto_entry(id) {
-    console.log("GOTO ENTRY:", [id]);
     m.route.set("/entry/:id", { id: id });
     enable_entry_edit = true;
     document.getElementById("top").scrollIntoView();
@@ -115,7 +114,6 @@ function goto_entry(id) {
 function get_recent_entries() {
     m.request({ method: "GET", url: "/journal/search/entries/recent"
     }).then(function(data) {
-        console.dir(data);
         if (data == null) { data = []; }
         recent_entries = data;
 
@@ -149,7 +147,6 @@ function new_entry(cb) {
         url: "/journal/data/entries",
         body: { tags: "new", body: "" }
     }).then(function(data) {
-        console.log("NEW ENTRY:", data);
         get_recent_entries();
         goto_entry(data[0].new_entry_id);
         if (cb) cb(data[0].new_entry_id);
@@ -192,7 +189,6 @@ let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
 class Entry {
     constructor(id, entry) {
-        console.log("CONSTR ENTR:", [id, entry]);
         if (entry) {
             this.set_entry(entry)
         } else {
@@ -208,13 +204,11 @@ class Entry {
             this.set_tags(new_entry_tags[1]);
             new_entry_tags = null;
         }
-        console.log("SET ENTRY:", entry);
     }
 
     load_entry_id(id) {
         let self = this;
         self.entry = { body: "loading...", tags: "loading..." };
-        console.log("GET ENTRY:", id);
         if (self.entry_id == id) return;
 
         m.request({ method: "GET", url: "/journal/data/entries/" + id })
@@ -257,7 +251,6 @@ class Entry {
         let ts = this.get_timestamp();
         let i = 0;
         this.entry.body = this.entry.body.replace(checkbox_re, function(l, txt) {
-        console.log("RR", [l, txt, i, idx]);
             if (idx == i) {
                 txt = txt.replace(/\s*\(\d+-\d+-\d+ \d+:\d+:\d+\)$/, "");
                 if (checked) {
@@ -490,7 +483,6 @@ class EntryView {
                   { class: "textarea is-size-7 is-fullwidth is-family-monospace "
                            + tint_class,
                     style: "min-height: 300px",
-                    value: entry.body(),
                     oninput: function(e) {
                         entry.set_body(e.target.value);
                     } },
@@ -665,7 +657,6 @@ class ModalView {
 //
 //var SearchColumnView = {
 //    view: function(vn) {
-//        console.log("RED RE:", recent_entries);
 //        let results = search_state[vn.attrs.srcidx].results;
 //        let res_node;
 //        if (results) {
@@ -699,7 +690,6 @@ var RecentEntries = {
         }
     },
     view: function(vn) {
-        console.log("RED RE:", recent_entries);
         if (recent_entries) {
             return m("div", {},
                 recent_entries.filter(e => !e.deleted).map(function(e) {
@@ -787,11 +777,9 @@ var TopLevel = {
 
 document.addEventListener("keypress", function(e) {
     if (e.getModifierState("Control")) {
-        console.log("Ctrl+Keypress", e.key);
         switch (e.key) {
             case "Enter":
                 let ent = get_entry_by_id(edit_entry_id);
-                console.log("RERE", e);
                 if (ent) ent.save();
                 m.redraw();
                 e.preventDefault();
@@ -799,8 +787,6 @@ document.addEventListener("keypress", function(e) {
         }
     }
 });
-
-console.log("GO;", document.body);
 
 m.route(document.body, '/main', {
     '/main': TopLevel,
