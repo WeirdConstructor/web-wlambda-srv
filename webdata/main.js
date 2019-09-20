@@ -92,7 +92,7 @@ function get_day() {
     return (
                 padl("" + (d.getYear() + 1900),"0", 4)
         + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
-        + "-" + padl("" + (d.getDate() + 1),       "0", 2));
+        + "-" + padl("" + (d.getDate()),       "0", 2));
 }
 
 function get_recent_valid_entry_id() {
