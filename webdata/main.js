@@ -516,6 +516,7 @@ class EntryView {
 
         let btn_class = "button is-outlined " + tint_class;
 
+
         if (show_full) {
             card.push(m("div", { class: "card-content",
                                  style: "padding: 0" },
@@ -535,17 +536,29 @@ class EntryView {
                 ])
             ));
 
+            let actions = [
+                m("button", { class: btn_class,
+                              onclick: function() { entry.add_log() } },
+                    "Log"),
+                m("button", { class: btn_class,
+                              onclick: function() { entry.add_todo() } },
+                    "Todo"),
+                m("button", { class: "button is-outlined is-link" ,
+                              onclick: function() { vn.state.show_ent_link_copy = true; } },
+                    "Ent"),
+            ];
+            if (vn.state.show_ent_link_copy) {
+                actions.push(
+                    m(ClipboardText,
+                        { text: "<ent:" + vn.attrs.entry_id + ">",
+                          done: function() {
+                            vn.state.show_ent_link_copy = null; } }));
+            }
+
             card.push(
                 m("footer", { class: "card-footer" }, [
                     m("div", { class: "card-footer-item is-size-7" },
-                        m("div", { class: "buttons has-addons is-centered" }, [
-                            m("button", { class: btn_class,
-                                          onclick: function() { entry.add_log() } },
-                                "Log"),
-                            m("button", { class: btn_class,
-                                          onclick: function() { entry.add_todo() } },
-                                "Todo"),
-                        ])),
+                        m("div", { class: "buttons has-addons is-centered" }, actions)),
                     m("div", { class: "card-footer-item is-size-7" },
                         m("div", { class: "buttons has-addons is-centered" }, [
                             m("button", { class: btn_class,
@@ -708,6 +721,26 @@ var RecentEntries = {
             return m("div");
         }
     },
+};
+
+class ClipboardText {
+    view(vn) {
+        return m("div", [
+            m("input", { type: "text",
+                         style: "width: 3rem;",
+                         id: "clip_text",
+                         class: "input",
+                         value: vn.attrs.text }),
+            m("button", { type: "text", class: "is-primary button",
+                          onclick: function(e) {
+                            let n = e.target.parentNode.children[0];
+                            n.select();
+                            n.setSelectionRange(0, 99999);
+                            document.execCommand("copy");
+                            vn.attrs.done();
+                          } }, "Copy"),
+        ]);
+    }
 };
 
 class NavbarView {

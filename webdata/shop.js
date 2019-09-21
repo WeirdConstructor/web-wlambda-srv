@@ -79,13 +79,16 @@ class ShopData {
                 c.age += 1;
                 c.ttl -= 1;
                 if (c.ttl > 0) return true;
-                else { self.score -= 1; return false; }
+                else { if (!c.sold) self.score -= 1; return false; }
             });
         if (this.tick_count % this.seller_timeout == 0) {
             this.do_seller_tick();
         }
         if (this.tick_count % this.next_customer_tout == 0) {
-            this.do_customer_tick();
+            let new_cust_cnt = Math.round(r(1, Math.round(self.tick_count / 20)));
+            for (let i = 0; i < new_cust_cnt; i++) {
+                this.do_customer_tick();
+            }
             this.next_customer_tout = Math.round(r(1, 15));
         }
         this.tick_count += 1;
