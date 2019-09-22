@@ -93,8 +93,11 @@ function padl(s, c, l) {
     return s
 }
 
-function get_day() {
+function get_day(offset) {
     let d = new Date();
+    if (offset != null) {
+        d.setDate(d.getDate() + 1);
+    }
     return (
                 padl("" + (d.getYear() + 1900),"0", 4)
         + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
@@ -134,14 +137,14 @@ function escapeRegExp(string) {
 }
 
 
-function open_diary() {
-    search(get_day(), function(entries) {
+function open_diary(offset) {
+    search(get_day(offset), function(entries) {
         if (entries && entries.length > 0) {
             entries.map(function(e) { load_cache(e.id, e) });
             goto_entry(entries[0].id);
         } else {
             new_entry(function(entry_id) {
-                new_entry_tags = [entry_id, get_day() + ", timelog, diary"];
+                new_entry_tags = [entry_id, get_day(offset) + ", timelog, diary"];
             });
         }
     });
@@ -590,6 +593,7 @@ function search(stxt, cb) {
         body: { search: stxt },
     }).then(function(data) {
         self.changed = false;
+        console.log("E:", data);
         if (cb) cb(data);
     }).catch(http_err);
 }
@@ -599,9 +603,7 @@ class SearchColumn {
         search(srchtxt, function(entries) {
             vn.state.entries = entries;
             if (entries)
-                entries.map(function(e) {
-                    load_cache(e.id, e);
-                });
+                entries.map(function(e) { load_cache(e.id, e); });
         });
     }
 
@@ -776,6 +778,9 @@ class NavbarView {
                             m("a", { class: "button is-light",
                                      onclick: function(ev) { open_diary(); } },
                                 "Diary"),
+                            m("a", { class: "button is-light",
+                                     onclick: function(ev) { open_diary(1); } },
+                                "Diary+1"),
                             m("a", { class: "button is-link",
                                      onclick: function(ev) {
                                         document.getElementById("search").scrollIntoView();
