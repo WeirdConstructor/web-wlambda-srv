@@ -382,10 +382,26 @@ class Entry {
             let def = l.split(/\s*;\s*/);
             if (def[0] == "rows") {
                 def.shift();
-                table_struct.rows = def;
+                if (def[0] == "daytimes") {
+                    let t = [];
+                    for (let i = 0; i < 18; i++) {
+                        t.push((i + 5) + ":00");
+                        t.push((i + 5) + ":30");
+                    }
+                    table_struct.rows_special = def[0];
+                    table_struct.rows = t;
+                } else {
+                    table_struct.rows = def;
+                }
             } else if (def[0] == "cols") {
                 def.shift();
                 table_struct.cols = def;
+
+                if (!table_struct.data) {
+                    table_struct.data = table_struct.cols.map(function() {
+                        return table_struct.rows.map(function() { return null });
+                    });
+                }
             } else if (def[0] == "def") {
                 table_struct.labels.push([def[1], def[2], ""]);
                 table_struct.colors[def[1]] = def[2];
@@ -394,12 +410,6 @@ class Entry {
                 let row = def[2] * 1;
                 let lbl = def[3];
                 let txt = def[4];
-                if (!table_struct.data) {
-                    table_struct.data = table_struct.cols.map(function() {
-                        return table_struct.rows.map(function() { return null });
-                    });
-                }
-
                 table_struct.data[col][row] = [lbl, txt, table_struct.colors[lbl]];
             }
         });
@@ -407,24 +417,67 @@ class Entry {
         return table_struct;
     }
 
-    render_table_to(table_struct, html_rows) {
-        html_rows.push(m("table", { class: "is-size-7" }, table_struct.rows.map(function(lbl, row_idx) {
+    render_table_to(vn, table_struct, html_rows) {
+        let self = this;
+        let lblbtns = [];
+        if (vn.state.lbl_selected) {
+            let l = vn.state.lbl_selected;
+            lblbtns.push(m("button", { class: "button is-small", style: "background-color: " + l[1],
+                                       onclick: function() { vn.state.lbl_selected = null } },
+                           "[" + l[0] + "]"));
+        } else {
+            lblbtns.push(m("button", { class: "button is-small" }, "[ ]"));
+        }
+        lblbtns.push(m("button", { class: "button is-small",
+                                   onclick: function() { vn.state.lbl_selected = ["X", null] } },
+                       "[X]"));
+        table_struct.labels.map(function(l) {
+            let lbl = l[0];
+            let clr = l[1];
+            lblbtns.push(m("button", { class: "button is-small", style: "background-color: " + clr,
+                                       onclick: function() { vn.state.lbl_selected = [lbl, clr] } },
+                           lbl));
+        });
+        html_rows.push(
+            m("div", { class: "buttons has-addons is-small is-size-7" }, lblbtns)
+        );
+        html_rows.push(m("div", { class: "table-container" }, m("table", { class: "table is-striped is-narrow is-fullwidth is-bordered is-size-7", style: "table-layout: fixed" }, table_struct.rows.map(function(lbl, row_idx) {
             let r = table_struct.cols.map(function(lbl, col_idx) {
                 let cell = table_struct.data[col_idx][row_idx];
+                let content = [];
+                if (cell) {
+                    content.push(m("span", cell[1]));
+                }
+                if (vn.state.lbl_selected) {
+                    content.push(m("a", { class: "button is-small", href: "#!", onclick: function(e) {
+                                            e.preventDefault();
+                                            if (vn.state.lbl_selected[1] == null) {
+                                                table_struct.data[col_idx][row_idx] = null;
+                                            } else {
+                                                table_struct.data[col_idx][row_idx] =
+                                                    [vn.state.lbl_selected[0], " ", vn.state.lbl_selected[1]];
+                                            }
+                                            self.set_table(table_struct);
+                                          } }, "*"));
+                }
                 if (cell)
-                    return m("td", { style: "border: 1px solid grey; background-color: " + cell[2] }, cell[1]);
+                    return m("td", { style: "padding: 0.1rem; background-color: " + cell[2] }, content);
                 else
-                    return m("td", { style: "border: 1px solid grey" }, " ");
+                    return m("td", { style: "padding: 0.1rem; " }, content);
             });
-            r.unshift(m("th", lbl));
+            r.unshift(m("th", { style: "padding: 0.1rem" }, lbl));
             return m("tr", r);
-        })));
+        }))));
     }
 
     serialize_table(table_struct) {
         let rows = [];
         rows.push("#jrnltbl#");
-        rows.push("rows;" + table_struct.rows.join(";"));
+        if (table_struct.rows_special) {
+            rows.push("rows;" + table_struct.rows_special);
+        } else {
+            rows.push("rows;" + table_struct.rows.join(";"));
+        }
         rows.push("cols;" + table_struct.cols.join(";"));
         table_struct.labels.map(function(l) {
             rows.push("def;" + l[0] + ";" + l[1]);
@@ -442,8 +495,9 @@ class Entry {
     }
 
     set_table(table_struct) {
-        let ser = serialize_table;
-        this.entry.body.replace(/#jrnltbl#((?:.|\r?\n)*)#jrnltbl_end#/, ser);
+        let ser = this.serialize_table(table_struct);
+        this.entry.body =
+            this.entry.body.replace(/.*#jrnltbl#((?:.|\r?\n)*)#jrnltbl_end#/, ser);
         this.changed = true;
     }
 
@@ -476,7 +530,7 @@ class Entry {
         ];
 
         if (table) {
-            this.render_table_to(table, html_rows);
+            this.render_table_to(vn, table, html_rows);
         }
 
         return html_rows;
