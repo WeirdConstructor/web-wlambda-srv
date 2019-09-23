@@ -360,7 +360,6 @@ class Entry {
         }).join("\n")
     }
 
-
     short_body() {
         let v = this.entry.body.split(/\n/);
         let out = [];
@@ -370,10 +369,95 @@ class Entry {
         return [out.join("\n"), v.length > 10];
     }
 
+    parse_table(tbl_def) {
+        let table_struct = {
+            cols: [],
+            rows: [],
+            labels: [],
+            colors: {},
+            data: null,
+        };
+        let lines = tbl_def[1].split(/\s*\n\s*/);
+        lines.map(function(l) {
+            let def = l.split(/\s*;\s*/);
+            if (def[0] == "rows") {
+                def.shift();
+                table_struct.rows = def;
+            } else if (def[0] == "cols") {
+                def.shift();
+                table_struct.cols = def;
+            } else if (def[0] == "def") {
+                table_struct.labels.push([def[1], def[2], ""]);
+                table_struct.colors[def[1]] = def[2];
+            } else if (def[0] == "@") {
+                let col = def[1] * 1;
+                let row = def[2] * 1;
+                let lbl = def[3];
+                let txt = def[4];
+                if (!table_struct.data) {
+                    table_struct.data = table_struct.cols.map(function() {
+                        return table_struct.rows.map(function() { return null });
+                    });
+                }
+
+                table_struct.data[col][row] = [lbl, txt, table_struct.colors[lbl]];
+            }
+        });
+
+        return table_struct;
+    }
+
+    render_table_to(table_struct, html_rows) {
+        html_rows.push(m("table", { class: "is-size-7" }, table_struct.rows.map(function(lbl, row_idx) {
+            let r = table_struct.cols.map(function(lbl, col_idx) {
+                let cell = table_struct.data[col_idx][row_idx];
+                if (cell)
+                    return m("td", { style: "border: 1px solid grey; background-color: " + cell[2] }, cell[1]);
+                else
+                    return m("td", { style: "border: 1px solid grey" }, " ");
+            });
+            r.unshift(m("th", lbl));
+            return m("tr", r);
+        })));
+    }
+
+    serialize_table(table_struct) {
+        let rows = [];
+        rows.push("#jrnltbl#");
+        rows.push("rows;" + table_struct.rows.join(";"));
+        rows.push("cols;" + table_struct.cols.join(";"));
+        table_struct.labels.map(function(l) {
+            rows.push("def;" + l[0] + ";" + l[1]);
+        });
+        for (let c = 0; c < table_struct.cols.length; c++) {
+            for (let r = 0; r < table_struct.rows.length; r++) {
+                let cell = table_struct.data[c][r];
+                if (cell) {
+                    rows.push("@;" + c + ";" + r + ";" + cell[0] + ";" + cell[1]);
+                }
+            }
+        }
+        rows.push("#jrnltbl_end#");
+        return rows.map(function(s) { return "    " + s }).join("\n");
+    }
+
+    set_table(table_struct) {
+        let ser = serialize_table;
+        this.entry.body.replace(/#jrnltbl#((?:.|\r?\n)*)#jrnltbl_end#/, ser);
+        this.changed = true;
+    }
+
     rendered_body(show_full, vn) {
         let body;
         let cont_link = false;
+        let table;
         if (show_full) {
+            let tbl = this.entry.body.match(/#jrnltbl#((?:.|\r?\n)*)#jrnltbl_end#/);
+            if (tbl) {
+                table = this.parse_table(tbl);
+                console.log("TABLE:", table);
+            }
+
             body = this.full_body();
         } else {
             let r = this.short_body();
@@ -381,15 +465,21 @@ class Entry {
             cont_link = r[1];
         }
 
-        return [
+        let html_rows = [
             m.trust(marked(body, markedOptions)),
             (cont_link
                 ? m("a", { onclick: function(e) {
                         e.preventDefault();
                         vn.state.show_full = true;
                     } }, "...")
-                : m("span"))
-        ]
+                : m("span")),
+        ];
+
+        if (table) {
+            this.render_table_to(table, html_rows);
+        }
+
+        return html_rows;
     }
 };
 
