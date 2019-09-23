@@ -593,6 +593,10 @@ function search(stxt, cb) {
         body: { search: stxt },
     }).then(function(data) {
         self.changed = false;
+        if (data != null && !(data instanceof Array)) {
+            http_err(data);
+            return;
+        }
         console.log("E:", data);
         if (cb) cb(data);
     }).catch(http_err);
@@ -601,9 +605,12 @@ function search(stxt, cb) {
 class SearchColumn {
     do_search(vn, srchtxt) {
         search(srchtxt, function(entries) {
-            vn.state.entries = entries;
-            if (entries)
+            if (entries) {
+                vn.state.entries = entries;
                 entries.map(function(e) { load_cache(e.id, e); });
+            } else {
+                vn.state.entries = [];
+            }
         });
     }
 
