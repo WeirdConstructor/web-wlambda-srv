@@ -1,5 +1,22 @@
 "use strict";
 
+
+// This script is released to the public domain and may be used, modified and
+// distributed without restrictions. Attribution not necessary but appreciated.
+// Source: http://weeknumber.net/how-to/javascript 
+
+// Returns the ISO week of the date.
+Date.prototype.getWeek = function() {
+  var date = new Date(this.getTime());
+  date.setHours(0, 0, 0, 0);
+  // Thursday in current week decides the year.
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  // January 4 is always in week 1.
+  var week1 = new Date(date.getFullYear(), 0, 4);
+  // Adjust to Thursday in week 1 and count number of weeks from date to week1.
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
 ///
 /// Setup marked.js renderer
 ///
@@ -93,15 +110,19 @@ function padl(s, c, l) {
     return s
 }
 
-function get_day(offset) {
-    let d = new Date();
-    if (offset != null) {
-        d.setDate(d.getDate() + 1);
-    }
+function get_day_fmt(d) {
     return (
                 padl("" + (d.getYear() + 1900),"0", 4)
         + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
         + "-" + padl("" + (d.getDate()),       "0", 2));
+}
+
+function get_day(offset) {
+    let d = new Date();
+    if (offset != null) {
+        d.setDate(d.getDate() + offset);
+    }
+    return get_day_fmt(d);
 }
 
 function get_recent_valid_entry_id() {
@@ -336,8 +357,12 @@ class Entry {
         this.changed = true;
     }
 
+    displayed_body() {
+        return this.entry.body.replace(/.*#jrnltbl#((?:.|\r?\n)*)#jrnltbl_end#/, "");
+    }
+
     full_body()  {
-        let v = this.entry.body.split(/\n/);
+        let v = this.displayed_body().split(/\n/);
         let last_time = null;
         return v.map(function(l) {
             let m = l.match(time_log_re);
@@ -361,7 +386,7 @@ class Entry {
     }
 
     short_body() {
-        let v = this.entry.body.split(/\n/);
+        let v = this.displayed_body().split(/\n/);
         let out = [];
         for (let i = 0; i < 10; i++) {
             out.push(v[i]);
@@ -420,54 +445,113 @@ class Entry {
     render_table_to(vn, table_struct, html_rows) {
         let self = this;
         let lblbtns = [];
+
         if (vn.state.lbl_selected) {
             let l = vn.state.lbl_selected;
-            lblbtns.push(m("button", { class: "button is-small", style: "background-color: " + l[1],
-                                       onclick: function() { vn.state.lbl_selected = null } },
-                           "[" + l[0] + "]"));
+            lblbtns.push(
+                m("button", { class: "button is-small",
+                              style: "background-color: " + l[1],
+                              onclick: function() { vn.state.lbl_selected = null } },
+                   "[" + l[0] + "]"));
         } else {
             lblbtns.push(m("button", { class: "button is-small" }, "[ ]"));
         }
-        lblbtns.push(m("button", { class: "button is-small",
-                                   onclick: function() { vn.state.lbl_selected = ["X", null] } },
-                       "[X]"));
+
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["X", null, null] } },
+               "[X]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["P", "pick", null] } },
+               "[P]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["P", "pickup", null] } },
+               "[R]"));
+
         table_struct.labels.map(function(l) {
             let lbl = l[0];
             let clr = l[1];
-            lblbtns.push(m("button", { class: "button is-small", style: "background-color: " + clr,
-                                       onclick: function() { vn.state.lbl_selected = [lbl, clr] } },
-                           lbl));
+            lblbtns.push(
+                m("button", { class: "button is-small",
+                              style: "background-color: " + clr,
+                              onclick: function() { vn.state.lbl_selected = [lbl, clr, ""] } },
+                   lbl));
         });
         html_rows.push(
             m("div", { class: "buttons has-addons is-small is-size-7" }, lblbtns)
         );
-        html_rows.push(m("div", { class: "table-container" }, m("table", { class: "table is-striped is-narrow is-fullwidth is-bordered is-size-7", style: "table-layout: fixed" }, table_struct.rows.map(function(lbl, row_idx) {
+        if (vn.state.lbl_selected && vn.state.lbl_selected[2] != null) {
+            html_rows.push(
+                m("input", {
+                    class: "input",
+                    type: "text",
+                    value: vn.state.lbl_selected[2],
+                    oninput: function(e) {
+                        vn.state.lbl_selected[2] = (e.target.value);
+                    },
+                }));
+        } else {
+            html_rows.push(
+                m("input", { class: "input", type: "text", disabled: "disabled" }));
+        }
+
+        let tbl_rows = table_struct.rows.map(function(lbl, row_idx) {
             let r = table_struct.cols.map(function(lbl, col_idx) {
                 let cell = table_struct.data[col_idx][row_idx];
                 let content = [];
+                if (vn.state.lbl_selected) {
+                    content.push(
+                        m("a", { class: "button is-small",
+                                 href: "#!",
+                                 onclick: function(e) {
+                                   e.preventDefault();
+                                   if (vn.state.lbl_selected[1] == null) {
+                                       table_struct.data[col_idx][row_idx] = null;
+                                   } else if (vn.state.lbl_selected[1] == "pick") {
+                                       vn.state.lbl_selected = [cell[0], cell[2], cell[1]];
+                                   } else if (vn.state.lbl_selected[1] == "pickup") {
+                                       vn.state.lbl_selected = [cell[0], cell[2], cell[1], "pickup"];
+                                       table_struct.data[col_idx][row_idx] = null;
+                                   } else {
+                                       let sel = vn.state.lbl_selected;
+                                       if (vn.state.lbl_selected[3] == "pickup") {
+                                           if (cell == null) {
+                                               vn.state.lbl_selected = ["P", "pickup", null];
+                                           } else {
+                                               vn.state.lbl_selected = [cell[0], cell[2], cell[1], "pickup"];
+                                           }
+                                       }
+                                       table_struct.data[col_idx][row_idx] =
+                                           [sel[0], sel[2], sel[1]];
+                                   }
+                                   self.set_table(table_struct);
+                                 } }, "*"));
+                }
                 if (cell) {
                     content.push(m("span", cell[1]));
                 }
-                if (vn.state.lbl_selected) {
-                    content.push(m("a", { class: "button is-small", href: "#!", onclick: function(e) {
-                                            e.preventDefault();
-                                            if (vn.state.lbl_selected[1] == null) {
-                                                table_struct.data[col_idx][row_idx] = null;
-                                            } else {
-                                                table_struct.data[col_idx][row_idx] =
-                                                    [vn.state.lbl_selected[0], " ", vn.state.lbl_selected[1]];
-                                            }
-                                            self.set_table(table_struct);
-                                          } }, "*"));
-                }
                 if (cell)
-                    return m("td", { style: "padding: 0.1rem; background-color: " + cell[2] }, content);
+                    return m("td", { style: "padding: 0.1rem; background-color: " + cell[2], class: "is-clipped" }, content);
                 else
-                    return m("td", { style: "padding: 0.1rem; " }, content);
+                    return m("td", { style: "padding: 0.1rem; ", class: "is-clipped" }, content);
             });
             r.unshift(m("th", { style: "padding: 0.1rem" }, lbl));
             return m("tr", r);
-        }))));
+        });
+
+        let col_heads =
+            table_struct.cols.map(function(lbl) { return m("th", lbl); });
+        col_heads.unshift(m("th"));
+        tbl_rows.unshift(m("tr", col_heads));
+
+        html_rows.push(m("div", { class: "table-container" },
+            m("table", { class: "table is-striped is-narrow is-fullwidth is-bordered is-size-7",
+                         style: "table-layout: fixed" }, tbl_rows)));
     }
 
     serialize_table(table_struct) {
@@ -703,7 +787,7 @@ class EntryView {
             }
 
             card.push(
-                m("footer", { class: "card-footer" }, [
+                m("footer", { class: "is-hidden-print card-footer" }, [
                     m("div", { class: "card-footer-item is-size-7" },
                         m("div", { class: "buttons has-addons is-centered" }, actions)),
                     m("div", { class: "card-footer-item is-size-7" },
@@ -758,6 +842,62 @@ class SearchColumn {
         });
     }
 
+    get_preset_search_text(vn, name) {
+        if (name == "" || name == null) return null;
+        let p = this.presets(vn);
+        let r = p.filter(function(p) { return p.name == name; });
+        if (r) return r[0].search();
+        else   return null;
+    }
+
+    presets(vn) {
+        return [
+            { name: "",             search: function() { return "" } },
+            { name: "work today",   search: function() { return get_day() + " | arbeit" } },
+            { name: "today",        search: function() { return get_day() } },
+            { name: "complete week",search: function() {
+                let d = new Date();
+                d.setDate(d.getDate() - d.getDay());
+                d.setDate(d.getDate() + 1);
+                let week_dates = "";
+                for (let i = 0; i < 7; i++) {
+                    if (week_dates != "") week_dates += " | ";
+                    week_dates += get_day_fmt(d);
+                    d.setDate(d.getDate() + 1);
+                }
+                week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
+                            + "-kw"   + padl("" + ((new Date()).getWeek()), "0", 2);
+                return "t_new " + week_dates;
+            } },
+            { name: "week",         search: function() {
+                let d = new Date();
+                return (     padl("" + (d.getYear() + 1900), "0", 4)
+                    + "-kw" + padl("" + (d.getWeek()), "0", 2));
+            } },
+            { name: "month",        search: function() {
+                let d = new Date();
+                d = new Date(d.getYear() + 1900, d.getMonth(), 1);
+                let month_str = "";
+                let weeks = {};
+                let week_ary = [];
+                for (let i = 0; i < 31; i++) {
+                    if (month_str != "") month_str += " | ";
+                    month_str += get_day_fmt(d);
+                    if (!weeks[d.getWeek()]) {
+                        week_ary.push(new Date(d));
+                        weeks[d.getWeek()] = true;
+                    }
+                    d.setDate(d.getDate() + 1);
+                }
+                month_str += " | " + week_ary.map(function(d) {
+                    return (     padl("" + (d.getYear() + 1900), "0", 4)
+                    + "-kw" + padl("" + (d.getWeek()), "0", 2));
+                }).join(" | ");
+                return "t_new " + month_str;
+            } },
+        ];
+    }
+
     view(vn) {
         let self = this;
 
@@ -775,8 +915,23 @@ class SearchColumn {
 
         let cards = [];
         cards.push(
-            m("div",
+            m("div", { class: "columns", style: "margin-top: 0rem" }, [
+                m("div", { class: "select",
+                           onchange: function(e) {
+                                let srchtxt =
+                                    self.get_preset_search_text(
+                                        vn, e.target.value);
+                                if (srchtxt != null) {
+                                    vn.state.input_txt = srchtxt;
+                                    self.do_search(vn, srchtxt);
+                                    e.target.value = "";
+                                }
+                           } },
+                    m("select", this.presets(vn).map(function(p) {
+                        return m("option", { value: p.name }, p.name);
+                    }))),
                 m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
+                             class: "input",
                              type: "text",
                              id: "search",
                              value: vn.state.input_txt,
@@ -785,7 +940,8 @@ class SearchColumn {
                     let srchtxt = ev.target.value.toLowerCase();
                     vn.state.input_txt = srchtxt;
                     self.do_search(vn, srchtxt);
-                } })));
+                } })
+            ]));
 
         vn.state.entries.map(function(e) {
             cards.push(
@@ -794,7 +950,7 @@ class SearchColumn {
                     m(EntryView, { entry_id: e.id })));
         });
 
-        return m("div", { class: "column" }, cards);
+        return m("div", { class: "is-hidden-print column" }, cards);
 
     }
 }
@@ -903,7 +1059,7 @@ class NavbarView {
             active = " is-active";
         }
 
-        return m("nav", { class: "navbar is-info",
+        return m("nav", { class: "is-hidden-print navbar is-info",
                           role: "navigation",
                           ["aria-label"]: "main navigation" }, [
             m("div", { class: "navbar-brand" },

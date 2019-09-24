@@ -52,9 +52,10 @@
 
                 save_search data.search;
                 !args = $[];
+                !has_order = $f;
                 (not ~ is_none data.search) {
                     !sql_srch = u:search_to_sql data.search
-                        "t.name" "(e.tags || ' ' || e.body)" "mtime" "ctime";
+                        "t.name" "tags" "(e.tags || ' ' || e.body)" "mtime" "ctime";
 
                     (sql_srch != "") {
                         std:push stmt "AND";
@@ -64,11 +65,15 @@
                     (not ~ is_none sql_srch.order) {
                         std:push stmt "ORDER BY ";
                         std:push stmt sql_srch.order;
+                        .has_order = $t;
+                    } {
+                        std:push stmt "ORDER BY mtime DESC, id DESC";
                     };
-                    std:push stmt " LIMIT 25";
+                    std:push stmt " LIMIT 40";
                     std:append args sql_srch.binds;
                 } {
                     std:push stmt ")";
+                    std:push stmt "ORDER BY mtime DESC, id DESC";
                 };
                 !stmt = std:str:join " " stmt;
                 std:displayln "SEARCH: " stmt;
@@ -83,7 +88,7 @@
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries
                                ORDER BY id DESC
-                               LIMIT 25";
+                               LIMIT 50";
             },
             $q"^POST:/journal/data/entries/(\d+)", {||
                 !entry_id = _.1;

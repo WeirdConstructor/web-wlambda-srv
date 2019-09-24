@@ -31,7 +31,7 @@
 };
 
 !parse_search = {
-    !(order_term, tags) = strip_match $q/^\s*((?:c_|m_)(?:old|new))\s*(.*)$/ _;
+    !(order_term, tags) = strip_match $q/^\s*((?:t_|c_|m_)(?:old|new))\s*(.*)$/ _;
 
     !or_terms = tags | std:re:map $q/\s*([^\|]+)\s*/ \_.1;
     .or_terms = or_terms { !or_term = _;
@@ -46,9 +46,10 @@
 !@export search_to_sql {
     !or         = parse_search _;
     !colname    = _1;
-    !txtcolname = _2;
-    !order_m    = _3;
-    !order_c    = _4;
+    !tagcolname = _2;
+    !txtcolname = _3;
+    !order_m    = _4;
+    !order_c    = _5;
 
     !out_binds = $[];
     !sql = std:str:join " OR " ~ or.or_terms {
@@ -69,6 +70,8 @@
             :?s :c_new  { || std:str:cat order_c " DESC" }
             :?s :m_old  { || std:str:cat order_m " ASC" }
             :?s :m_new  { || std:str:cat order_m " DESC" }
+            :?s :t_old  { || std:str:cat tagcolname " ASC" }
+            :?s :t_new  { || std:str:cat tagcolname " DESC" }
         ;
     };
 
