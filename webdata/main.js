@@ -82,7 +82,7 @@ var root = document.body;
 var c = 0;
 
 var recent_entries = null;
-var edit_entry_id = null;
+var current_entry_id = null;
 var enable_entry_edit = false;
 var new_entry_tags = null;
 var modal = null;
@@ -135,9 +135,13 @@ function get_recent_valid_entry_id() {
     return null;
 }
 
+function goto_entry_and_edit(id) {
+    goto_entry(id);
+    enable_entry_edit = true;
+}
+
 function goto_entry(id) {
     m.route.set("/entry/:id", { id: id });
-    enable_entry_edit = true;
     document.getElementById("top").scrollIntoView();
 }
 
@@ -147,7 +151,7 @@ function get_recent_entries() {
         if (data == null) { data = []; }
         recent_entries = data;
 
-        if (recent_entries.length > 0 && edit_entry_id == null) {
+        if (recent_entries.length > 0 && current_entry_id == null) {
             goto_entry(get_recent_valid_entry_id());
         }
     }).catch(http_err);
@@ -178,7 +182,7 @@ function new_entry(cb) {
         body: { tags: "new", body: "" }
     }).then(function(data) {
         get_recent_entries();
-        goto_entry(data[0].new_entry_id);
+        goto_entry_and_edit(data[0].new_entry_id);
         if (cb) cb(data[0].new_entry_id);
     }).catch(http_err);
 }
@@ -263,8 +267,8 @@ class Entry {
         let self = this;
         this.entry.deleted = 1;
         this.save(function() {
-            if (self.entry.id == edit_entry_id) {
-                edit_entry_id = null;
+            if (self.entry.id == current_entry_id) {
+                current_entry_id = null;
                 m.route.set("/main");
                 enable_entry_edit = false;
             }
@@ -274,7 +278,7 @@ class Entry {
 
     is_edited_entry() {
         if (!this.entry) return false;
-        return this.entry.id == edit_entry_id;
+        return this.entry.id == current_entry_id;
     }
 
     set_checkbox(idx, text, checked) {
@@ -855,6 +859,14 @@ class SearchColumn {
             { name: "",             search: function() { return "" } },
             { name: "work today",   search: function() { return get_day() + " | arbeit" } },
             { name: "today",        search: function() { return get_day() } },
+            { name: "today week",   search: function() {
+                let d = new Date();
+                return (
+                    "t_old "
+                    + padl("" + (d.getYear() + 1900), "0", 4)
+                    + "-kw" + padl("" + (d.getWeek()), "0", 2)
+                    + " | " + get_day());
+            } },
             { name: "complete week",search: function() {
                 let d = new Date();
                 d.setDate(d.getDate() - d.getDay());
@@ -1108,7 +1120,7 @@ var TopLevel = {
     },
     view: function(vn) {
         if (vn.attrs.id != null) {
-            edit_entry_id = vn.attrs.id;
+            current_entry_id = vn.attrs.id;
         }
 
         return m("div", { id: "top" }, [
@@ -1117,7 +1129,7 @@ var TopLevel = {
                 m(ModalView),
                 m("div", { class: "columns is-3" }, [
                     m("div", { class: "column" },  [
-                        m(EntryView, { is_top_editor: true, entry_id: edit_entry_id }),
+                        m(EntryView, { is_top_editor: true, entry_id: current_entry_id }),
                         m("hr"),
                         m(RecentEntries),
                     ]),
@@ -1132,7 +1144,7 @@ document.addEventListener("keypress", function(e) {
     if (e.getModifierState("Control")) {
         switch (e.key) {
             case "Enter":
-                let ent = get_entry_by_id(edit_entry_id);
+                let ent = get_entry_by_id(current_entry_id);
                 if (ent) ent.save();
                 m.redraw();
                 e.preventDefault();
