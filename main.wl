@@ -42,42 +42,17 @@
                                LIMIT 25";
             },
             $q"^POST:/journal/search/entries", {||
-                !stmt = $[];
-                std:push stmt
-                    $q"SELECT * FROM entries WHERE id IN
-                       (SELECT DISTINCT e.id FROM entries e
-                        LEFT JOIN tag_entries te ON e.id = te.entry_id
-                        LEFT JOIN tags t ON t.id = te.tag_id
-                        WHERE (e.deleted <> 1) AND ((1=1)";
-
                 save_search data.search;
                 !args = $[];
-                !has_order = $f;
                 (not ~ is_none data.search) {
-                    !sql_srch = u:search_to_sql data.search
-                        "t.name" "tags" "(e.tags || ' ' || e.body)" "mtime" "ctime";
-
-                    (sql_srch != "") {
-                        std:push stmt "AND";
-                        std:push stmt sql_srch.where;
-                    };
-                    std:push stmt "))";
-                    (not ~ is_none sql_srch.order) {
-                        std:push stmt "ORDER BY ";
-                        std:push stmt sql_srch.order;
-                        .has_order = $t;
-                    } {
-                        std:push stmt "ORDER BY mtime DESC, id DESC";
-                    };
-                    std:push stmt " LIMIT 40";
-                    std:append args sql_srch.binds;
+                    !s = u:search_to_sql ~ u:parse_search data.search;
+                    std:displayln :SQL_SEARCH " " s;
+                    std:push args s.sql;
+                    std:append args s.binds;
                 } {
-                    std:push stmt ")";
-                    std:push stmt "ORDER BY mtime DESC, id DESC";
+                    std:push args
+                        $q"SELECT * FROM entries ORDER BY mtime DESC LIMIT 40"; 
                 };
-                !stmt = std:str:join " " stmt;
-                std:displayln "SEARCH: " stmt;
-                std:prepend args stmt;
                 return :from_req ~ db:exec[[args]];
             },
             $q"^GET:/journal/data/entries/(\d+)", {||
@@ -172,6 +147,7 @@
     };
 
     (is_err data) {
+        std:displayln :ERROR " " data;
         (is_map ~ unwrap_err data) { unwrap_err data } { data };
     } { ${ data = data } };
 };

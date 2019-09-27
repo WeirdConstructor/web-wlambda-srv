@@ -14,11 +14,12 @@
 };
 
 !analyze_terms = \:ret {
-    std:re:match $q/^([+\*])(.*)$/ _ {
+    std:re:match $q/^([-+\*])(.*)$/ _ {
         !op   = _.1;
         !term = _.2;
         return :ret ~ match op
             :?s "+" {|| $[:and, term] }
+            :?s "-" {|| $[:not, term] }
             {|| $[:txt, term] };
     };
 
@@ -44,36 +45,94 @@
 !@export parse_search  parse_search;
 
 !@export search_to_sql {
-    !or         = parse_search _;
-    !colname    = _1;
-    !tagcolname = _2;
-    !txtcolname = _3;
-    !order_m    = _4;
-    !order_c    = _5;
+    !sql = $[];
+    !binds = $[];
 
-    !out_binds = $[];
-    !sql = std:str:join " OR " ~ or.or_terms {
-        std:str:cat "("
-            (_ { !(typ, s) = _;
-                std:push out_binds s;
-                std:str:cat "("
-                    ((typ == :txt)  { std:str:cat "instr(lower(" txtcolname "), lower(?))"; }
-                                    { std:str:cat "instr(lower(" colname "), lower(?))"; })
+    !p = std:push;
+    !i = 0;
+    p sql "SELECT * FROM entries ex WHERE";
+    p sql ~ _.or_terms {
+        !or = $[];
+        p or "(ex.id IN (";
+        p or "SELECT e.id FROM entries e";
+        !where = $[];
+        _ {
+            !(typ, s) = _;
+            .i = i + 1;
+            !tbl = std:str:cat "t" i;
+            !tble = std:str:cat "te" i;
+            p or ~ std:str:cat "LEFT JOIN tag_entries " tble " ON e.id = " tble ".entry_id";
+            p or ~ std:str:cat
+                "LEFT JOIN tags " tbl " "
+                "ON " tbl ".id = " tble ".tag_id AND "
+                ~ std:str:cat "("
+                    ((typ == :txt)  { std:str:cat "instr(lower(" tbl ".name || ' ' || e.body), lower(?))"; }
+                    {(typ == :not)  { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }
+                                    { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }})
                 ")";
-            } | std:str:join " AND ")
-        ")";
+            std:push binds s;
+            (typ == :not) {
+                std:push where ~ std:str:cat tbl ".id IS NULL";
+            } {
+                std:push where ~ std:str:cat tbl ".id IS NOT NULL";
+            };
+        };
+        p or " WHERE ";
+        p or ~ std:str:join " AND " where;
+        p or "))";
+        std:str:join " " or
+    } | std:str:join " OR ";
+
+    !order = _.order;
+    (not ~ is_none order) {
+        p sql " ORDER BY ";
+        p sql ~ match order
+            :?s :c_old  { || std:str:cat "ctime ASC" }
+            :?s :c_new  { || std:str:cat "ctime DESC" }
+            :?s :m_old  { || std:str:cat "mtime ASC" }
+            :?s :m_new  { || std:str:cat "mtime DESC" }
+            :?s :t_old  { || std:str:cat "tags ASC" }
+            :?s :t_new  { || std:str:cat "tags DESC" };
     };
 
-    !order = (not ~ is_none or.order) {
-        match or.order
-            :?s :c_old  { || std:str:cat order_c " ASC" }
-            :?s :c_new  { || std:str:cat order_c " DESC" }
-            :?s :m_old  { || std:str:cat order_m " ASC" }
-            :?s :m_new  { || std:str:cat order_m " DESC" }
-            :?s :t_old  { || std:str:cat tagcolname " ASC" }
-            :?s :t_new  { || std:str:cat tagcolname " DESC" }
-        ;
-    };
+    std:push sql " LIMIT 40 ";
 
-    ${ where = sql, binds = out_binds, order = order }
+    ${ sql = std:str:join " " sql, binds = binds }
 };
+
+
+
+#!@export search_to_sql {
+#    !or         = parse_search _;
+#    !colname    = _1;
+#    !tagcolname = _2;
+#    !txtcolname = _3;
+#    !order_m    = _4;
+#    !order_c    = _5;
+#
+#    !out_binds = $[];
+#    !sql = std:str:join " OR " ~ or.or_terms {
+#        std:str:cat "("
+#            (_ { !(typ, s) = _;
+#                std:push out_binds s;
+#                std:str:cat "("
+#                    ((typ == :txt)  { std:str:cat "instr(lower(" txtcolname "), lower(?))"; }
+#                                    { std:str:cat "instr(lower(" colname "), lower(?))"; })
+#                ")";
+#            } | std:str:join " AND ")
+#        ")";
+#    };
+#
+#    !order = (not ~ is_none or.order) {
+#        match or.order
+#            :?s :c_old  { || std:str:cat "ctime ASC" }
+#            :?s :c_new  { || std:str:cat "ctime DESC" }
+#            :?s :m_old  { || std:str:cat "mtime ASC" }
+#            :?s :m_new  { || std:str:cat "mtime DESC" }
+#            :?s :t_old  { || std:str:cat "tags ASC" }
+#            :?s :t_new  { || std:str:cat "tags DESC" }
+#        ;
+#    };
+#
+#    ${ where = sql, binds = out_binds, order = order }
+#};

@@ -327,6 +327,11 @@ class Entry {
 
     add_todo() {
         let d = new Date();
+        // TODO:
+        // - [ ] Aufbrechen in blöcke die aus normal-lines und todo-lines bestehen
+        // - [ ] blöcke analysieren, ob sie unfertige todos enthalten.
+        // - [ ] letzten block nehmen und appenden
+        // - [ ] alle blöcke zusammenfügen mit "\n"
         this.make_sure_newline_at_end();
         this.entry.body += "- [ ] \n";
         this.changed = true;
@@ -879,7 +884,7 @@ class SearchColumn {
                 }
                 week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
                             + "-kw"   + padl("" + ((new Date()).getWeek()), "0", 2);
-                return "t_new " + week_dates;
+                return "t_new " + week_dates + " | weekly review";
             } },
             { name: "week",         search: function() {
                 let d = new Date();
