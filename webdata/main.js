@@ -862,7 +862,7 @@ class SearchColumn {
     presets(vn) {
         return [
             { name: "",             search: function() { return "" } },
-            { name: "work today",   search: function() { return get_day() + " | arbeit" } },
+            { name: "work today",   search: function() { return "m_new " + get_day() + " | arbeit" } },
             { name: "today",        search: function() { return get_day() } },
             { name: "today week",   search: function() {
                 let d = new Date();
@@ -884,6 +884,20 @@ class SearchColumn {
                 }
                 week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
                             + "-kw"   + padl("" + ((new Date()).getWeek()), "0", 2);
+                return "t_new " + week_dates + " | weekly review";
+            } },
+            { name: "complete last week",search: function() {
+                let d = new Date();
+                d.setDate(d.getDate() - (d.getDay() + 7));
+                d.setDate(d.getDate() + 1);
+                let week_dates = "";
+                for (let i = 0; i < 7; i++) {
+                    if (week_dates != "") week_dates += " | ";
+                    week_dates += get_day_fmt(d);
+                    d.setDate(d.getDate() + 1);
+                }
+                week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
+                            + "-kw"   + padl("" + ((new Date()).getWeek() - 1), "0", 2);
                 return "t_new " + week_dates + " | weekly review";
             } },
             { name: "week",         search: function() {
