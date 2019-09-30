@@ -51,7 +51,7 @@
                     std:append args s.binds;
                 } {
                     std:push args
-                        $q"SELECT * FROM entries ORDER BY mtime DESC LIMIT 40"; 
+                        $q"SELECT * FROM entries WHERE deleted=0 ORDER BY mtime DESC LIMIT 40"; 
                 };
                 return :from_req ~ db:exec[[args]];
             },
@@ -62,6 +62,7 @@
             $q"^GET:/journal/data/entries", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries
+                               WHERE deleted=0
                                ORDER BY id DESC
                                LIMIT 50";
             },

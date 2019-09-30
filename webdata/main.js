@@ -163,10 +163,10 @@ function escapeRegExp(string) {
 
 
 function open_diary(offset) {
-    search(get_day(offset), function(entries) {
-        if (entries && entries.length > 0) {
-            entries.map(function(e) { load_cache(e.id, e) });
-            goto_entry(entries[0].id);
+    search(get_day(offset), function(ents) {
+        if (ents && ents.length > 0) {
+            ents.map(function(e) { load_cache(e.id, e) });
+            goto_entry(ents[0].id);
         } else {
             new_entry(function(entry_id) {
                 new_entry_tags = [entry_id, get_day(offset) + ", timelog, diary"];
@@ -187,7 +187,9 @@ function new_entry(cb) {
     }).catch(http_err);
 }
 
+var entries = {};
 function load_cache(id, e) {
+    id = "" + id;
     if (e) {
         entries[id] = new Entry(id, e);
     } else {
@@ -195,9 +197,9 @@ function load_cache(id, e) {
     }
 }
 
-var entries = {};
 function get_entry_by_id(id) {
     if (!id) return null;
+    id = "" + id;
 
     if (entries[id]) {
 
@@ -345,11 +347,14 @@ class Entry {
             url: "/journal/data/entries/" + this.entry.id,
             body: this.entry
         }).then(function(data) {
-            console.log("O", data);
             self.entry.mtime = data[2].mtime;
+            console.log("SAVED:", self.entry);
             self.changed = false;
-            if (done_cb) done_cb();
-        }).catch(http_err);
+            if (done_cb) done_cb(true);
+        }).catch(function(e) {
+            http_err(e);
+            if (done_cb) done_cb(false);
+        });
     }
 
     set_tags(t) { if (this.entry.tags != t) this.changed = true; this.entry.tags = t; }
@@ -726,12 +731,23 @@ class EntryView {
         let card = [ this.m_header(vn, entry), ];
 
         if (vn.state.edit_mode) {
-            card.push(m("div", { class: "card-content", style: "padding: 0.5rem" },
+            card.push(m("div", { class: "card-content",
+                                 entry_id: vn.attrs.entry_id,
+                                 style: "padding: 0.5rem" },
                 m("textarea",
                   { class: "textarea is-size-7 is-fullwidth is-family-monospace "
                            + tint_class,
+//                    onkeypress: function(e) {
+//                        console.log("KEY:", e);
+//                        e.preventDefault();
+//                        e.redraw = false;
+//document.addEventListener("keypress", function(e) {
+//    if (e.getModifierState("Control")) {
+//        switch (e.key) {
+//                    },
                     style: "min-height: 300px",
                     oninput: function(e) {
+//                        console.log("ONINPUT");
                         entry.set_body(e.target.value);
                     } },
                   entry.body())));
@@ -743,6 +759,7 @@ class EntryView {
                 let body_array = entry.rendered_body(show_full, vn);
 
                 let content = m("div", { class: "card-content",
+                                         entry_id: vn.attrs.entry_id,
                                          style: "padding: 0.5rem" },
                     m("div", { class: "content" }, body_array));
 
@@ -834,19 +851,18 @@ function search(stxt, cb) {
             http_err(data);
             return;
         }
-        console.log("E:", data);
         if (cb) cb(data);
     }).catch(http_err);
 }
 
 class SearchColumn {
     do_search(vn, srchtxt) {
-        search(srchtxt, function(entries) {
-            if (entries) {
-                vn.state.entries = entries;
-                entries.map(function(e) { load_cache(e.id, e); });
+        search(srchtxt, function(ents) {
+            if (ents) {
+                vn.state.ents = ents;
+                ents.map(function(e) { load_cache(e.id, e); });
             } else {
-                vn.state.entries = [];
+                vn.state.ents = [];
             }
         });
     }
@@ -932,7 +948,7 @@ class SearchColumn {
     view(vn) {
         let self = this;
 
-        if (!vn.state.entries) vn.state.entries = [];
+        if (!vn.state.ents) vn.state.ents = [];
         if (!vn.state.input_txt && !vn.state.last_search_req) {
             vn.state.last_search_req = true;
             m.request({
@@ -974,7 +990,7 @@ class SearchColumn {
                 } })
             ]));
 
-        vn.state.entries.map(function(e) {
+        vn.state.ents.map(function(e) {
             cards.push(
                 m("div", { class: "is-size-7",
                            style: "margin-bottom: 0.75em" },
@@ -1163,10 +1179,26 @@ document.addEventListener("keypress", function(e) {
     if (e.getModifierState("Control")) {
         switch (e.key) {
             case "Enter":
-                let ent = get_entry_by_id(current_entry_id);
-                if (ent) ent.save();
-                m.redraw();
-                e.preventDefault();
+                e.redraw = false;
+                let el = document.activeElement;
+                if (!el) return;
+                el = el.parentElement;
+                if (!el) return;
+                let at = el.attributes.getNamedItem("entry_id");
+                if (!at) return;
+                let eid = at.nodeValue;
+                if (eid) {
+                    let ent = get_entry_by_id(eid);
+                    if (ent) ent.save(function() {
+                        // FIXME: Some weird workaround?! textarea is empty
+                        //        after save() finishes.
+                        //        DOM-Diffing is probably fucked up.
+                        m.redraw();
+                        setTimeout(function() { m.redraw() }, 50);
+                    });
+                    e.redraw = false;
+                    e.preventDefault();
+                }
                 break;
         }
     }

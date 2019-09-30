@@ -50,7 +50,7 @@
 
     !p = std:push;
     !i = 0;
-    p sql "SELECT * FROM entries ex WHERE";
+    p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND ";
     p sql ~ _.or_terms {
         !or = $[];
         p or "(ex.id IN (";
