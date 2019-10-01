@@ -268,7 +268,9 @@ class Entry {
     del() {
         let self = this;
         this.entry.deleted = 1;
-        this.save(function() {
+        this.save(function(ok) {
+            if (!ok) return;
+
             if (self.entry.id == current_entry_id) {
                 current_entry_id = null;
                 m.route.set("/main");
@@ -347,10 +349,12 @@ class Entry {
             url: "/journal/data/entries/" + this.entry.id,
             body: this.entry
         }).then(function(data) {
-            self.entry.mtime = data[2].mtime;
-            console.log("SAVED:", self.entry);
-            self.changed = false;
-            if (done_cb) done_cb(true);
+            if (data && data[2] && data[2].mtime != null) {
+                self.entry.mtime = data[2].mtime;
+                console.log("SAVED:", self.entry);
+                self.changed = false;
+                if (done_cb) done_cb(true);
+            }
         }).catch(function(e) {
             http_err(e);
             if (done_cb) done_cb(false);
@@ -962,33 +966,69 @@ class SearchColumn {
 
         let cards = [];
         cards.push(
-            m("div", { class: "columns", style: "margin-top: 0rem" }, [
-                m("div", { class: "select",
-                           onchange: function(e) {
-                                let srchtxt =
-                                    self.get_preset_search_text(
-                                        vn, e.target.value);
-                                if (srchtxt != null) {
-                                    vn.state.input_txt = srchtxt;
-                                    self.do_search(vn, srchtxt);
-                                    e.target.value = "";
-                                }
-                           } },
-                    m("select", this.presets(vn).map(function(p) {
-                        return m("option", { value: p.name }, p.name);
-                    }))),
-                m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
-                             class: "input",
-                             type: "text",
-                             id: "search",
-                             value: vn.state.input_txt,
-                             onchange: function(ev) {
-                    ev.preventDefault();
-                    let srchtxt = ev.target.value.toLowerCase();
-                    vn.state.input_txt = srchtxt;
-                    self.do_search(vn, srchtxt);
-                } })
-            ]));
+            m("div", { class: "is-hidden-touch" },
+            m("div", { class: "field has-addons", style: "margin-top: 0rem" }, [
+                m("p", { class: "control" },
+                    m("span", { class: "select",
+                               onchange: function(e) {
+                                    let srchtxt =
+                                        self.get_preset_search_text(
+                                            vn, e.target.value);
+                                    if (srchtxt != null) {
+                                        vn.state.input_txt = srchtxt;
+                                        self.do_search(vn, srchtxt);
+                                        e.target.value = "";
+                                    }
+                               } },
+                        m("select", this.presets(vn).map(function(p) {
+                            return m("option", { value: p.name }, p.name);
+                        })))),
+                m("p", { class: "control is-expanded" },
+                    m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
+                                 class: "input",
+                                 type: "text",
+                                 value: vn.state.input_txt,
+                                 onchange: function(ev) {
+                        ev.preventDefault();
+                        let srchtxt = ev.target.value.toLowerCase();
+                        vn.state.input_txt = srchtxt;
+                        self.do_search(vn, srchtxt);
+                    } })),
+                m("p", { class: "control" },
+                    m("button", { class: "button", onclick: function() { vn.state.input_txt = ""; } }, "Clear")),
+            ])));
+        cards.push(
+            m("div", { class: "is-hidden-desktop" },
+            m("div", { class: "field", style: "margin-top: 0rem" }, [
+                m("p", { class: "control" },
+                    m("span", { class: "select",
+                               onchange: function(e) {
+                                    let srchtxt =
+                                        self.get_preset_search_text(
+                                            vn, e.target.value);
+                                    if (srchtxt != null) {
+                                        vn.state.input_txt = srchtxt;
+                                        self.do_search(vn, srchtxt);
+                                        e.target.value = "";
+                                    }
+                               } },
+                        m("select", this.presets(vn).map(function(p) {
+                            return m("option", { value: p.name }, p.name);
+                        })))),
+                m("p", { class: "control is-expanded" },
+                    m("input", { style: "width: 100%; margin-bottom: 0.75rem;",
+                                 class: "input",
+                                 type: "text",
+                                 value: vn.state.input_txt,
+                                 onchange: function(ev) {
+                        ev.preventDefault();
+                        let srchtxt = ev.target.value.toLowerCase();
+                        vn.state.input_txt = srchtxt;
+                        self.do_search(vn, srchtxt);
+                    } })),
+                m("p", { class: "control" },
+                    m("button", { class: "button", onclick: function() { vn.state.input_txt = ""; } }, "Clear")),
+            ])));
 
         vn.state.ents.map(function(e) {
             cards.push(
@@ -997,7 +1037,7 @@ class SearchColumn {
                     m(EntryView, { entry_id: e.id })));
         });
 
-        return m("div", { class: "is-hidden-print column" }, cards);
+        return m("div", { id: "search", class: "is-hidden-print column" }, cards);
 
     }
 }
@@ -1189,7 +1229,7 @@ document.addEventListener("keypress", function(e) {
                 let eid = at.nodeValue;
                 if (eid) {
                     let ent = get_entry_by_id(eid);
-                    if (ent) ent.save(function() {
+                    if (ent) ent.save(function(ok) {
                         // FIXME: Some weird workaround?! textarea is empty
                         //        after save() finishes.
                         //        DOM-Diffing is probably fucked up.
