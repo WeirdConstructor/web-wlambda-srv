@@ -41,6 +41,17 @@
                                ORDER BY mtime DESC, id DESC
                                LIMIT 25";
             },
+            $q"^POST:/journal/fileupload/(\d+)", {||
+                !entry_id = _.1;
+                !d = data.data;
+                std:re:match $q$;base64,(.*)$ d {
+                    _? :from_req ~
+                        write_webdata
+                            (std:str:cat entry_id "_" data.name)
+                            (b64:decode _.1);
+                };
+                return :from_req ~ $["ok"];
+            },
             $q"^POST:/journal/search/entries", {||
                 save_search data.search;
                 !args = $[];

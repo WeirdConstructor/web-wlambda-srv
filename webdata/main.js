@@ -807,6 +807,9 @@ class EntryView {
                 m("button", { class: "button is-outlined is-link" ,
                               onclick: function() { vn.state.show_ent_link_copy = true; } },
                     "Ent"),
+                m("button", { class: "button is-outlined is-link" ,
+                              onclick: function() { vn.state.show_upload = true; } },
+                    "Upl"),
             ];
             if (vn.state.show_ent_link_copy) {
                 actions.push(
@@ -814,6 +817,26 @@ class EntryView {
                         { text: "<ent:" + vn.attrs.entry_id + ">",
                           done: function() {
                             vn.state.show_ent_link_copy = null; } }));
+            }
+            if (vn.state.show_upload) {
+                actions.push(
+                    m("div", [
+                        m("input", { type: "file", onchange: function(e) {
+                            e.preventDefault();
+                            let fi = e.target.files;
+                            do_upload(vn.attrs.entry_id, fi, function() {
+                                vn.state.show_upload = false;
+                            });
+                        } }),
+                        m("input", { style: "width: 2rem", type: "text",
+                                     onpaste: function(e) {
+                            e.preventDefault();
+                            let fi = e.clipboardData.files;
+                            do_upload(vn.attrs.entry_id, fi, function() {
+                                vn.state.show_upload = false;
+                            });
+                        } }),
+                    ]));
             }
 
             card.push(
@@ -843,6 +866,28 @@ class EntryView {
         return m("div", { class: "card", id: id }, card)
     }
 };
+
+function do_upload(entry_id, fi, cb) {
+    console.log("OF", fi[0]);
+    let name = fi[0].name;
+    let type = fi[0].type;
+    let r = new FileReader();
+    r.onload = function(e) {
+        upload_file(entry_id, name, type, e.target.result, cb);
+    };
+    r.readAsDataURL(fi[0]);
+}
+
+function upload_file(entry_id, filename, mime, dataurl, cb) {
+    console.log("UPLOAD", [entry_id, filename, mime, dataurl]);
+    m.request({
+        method: "POST",
+        url: "/journal/fileupload/" + entry_id,
+        body: { name: filename, type: mime, data: dataurl },
+    }).then(function(data) {
+        if (cb) cb();
+    }).catch(http_err);
+}
 
 function search(stxt, cb) {
     m.request({

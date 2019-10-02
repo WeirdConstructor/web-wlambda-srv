@@ -125,6 +125,37 @@ fn start_wlambda_thread() -> threads::Sender {
             }, Some(1), Some(1));
 
         genv.borrow_mut().add_func(
+            "write_webdata",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                use std::io::prelude::*;
+                let n = env.arg(0).s_raw();
+                let d = env.arg(1);
+                let f = std::fs::File::create(String::from("webdata/") + &n);
+                if let Err(e) = f {
+                    return Ok(VVal::err_msg(
+                        &format!("Couldn't open file webdata/{}: {}", n, e)));
+                };
+                let mut f = f.unwrap();
+                if let VVal::Byt(b) = d {
+                    if let Err(e) = f.write_all(&b.borrow()[..]) {
+                        return Ok(VVal::err_msg(
+                            &format!("Couldn't open file webdata/{}: {}", n, e)));
+                    }
+                }
+                return Ok(VVal::Bol(true));
+            }, Some(2), Some(2));
+
+        genv.borrow_mut().add_func(
+            "b64:decode",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                use base64::decode;
+                Ok(match decode(&env.arg(0).s_raw()) {
+                    Ok(v)  => VVal::new_byt(v),
+                    Err(e) => VVal::err_msg(&format!("Decode base64 error: {}", e)),
+                })
+            }, Some(1), Some(1));
+
+        genv.borrow_mut().add_func(
             "db:exec",
             |env: &mut wlambda::vval::Env, argc: usize| {
                 let stmt_str = env.arg(0).s_raw();
@@ -196,7 +227,7 @@ fn parse_basic_auth(header: &str) -> VVal {
         let v = VVal::vec();
         v.push(VVal::new_str_mv(m));
         v.push(VVal::new_str_mv(
-            String::from_utf8(decode(&b))
+            String::from_utf8(decode(&b).unwrap())
             .unwrap_or(String::from(""))));
         v
     }
