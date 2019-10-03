@@ -225,6 +225,7 @@ let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
 class Entry {
     constructor(id, entry) {
+        console.log("CONSTRUCT", [id, entry]);
         if (entry) {
             this.set_entry(entry)
         } else {
@@ -257,12 +258,30 @@ class Entry {
         return this.changed;
     }
 
+    ask_del_attachment(id, file) {
+        let self = this;
+        modal = {
+            text: "Really delete attachment [" + id + "]: " + file + "?",
+            cb: function () { self.del_attachment(id); },
+        };
+    }
+
     ask_del() {
         let self = this;
         modal = {
             text: "Really delete?",
             cb: function () { self.del(); },
         };
+    }
+
+    del_attachment(id) {
+        let self = this;
+        m.request({
+            method: "GET",
+            url: "/journal/deleteupload/" + id,
+        }).then(function() {
+            self.refresh_attachments();
+        }).catch(http_err);
     }
 
     del() {
@@ -401,6 +420,42 @@ class Entry {
             }
             return l;
         }).join("\n")
+    }
+
+    refresh_attachments() {
+        let self = this;
+
+        if (!self.getting_attachments) {
+            self.getting_attachments = true;
+
+            m.request({
+                method: "GET",
+                url: "/journal/attachments/" + self.id(),
+            }).then(function(at) {
+                if (at == null) { at = []; }
+                self.entry.attachments = at;
+                console.log("At " + self.entry.id, at);
+                self.getting_attachments = false;
+            }).catch(function() {
+                self.getting_attachments = false;
+            });
+        }
+    }
+
+    has_attachments() {
+        let self = this;
+
+        if (self.entry.attachments == null) {
+            self.refresh_attachments();
+            return false;
+        } else if (self.entry.attachments) {
+            return true;
+        }
+    }
+
+    get_attachments() {
+        if (!this.entry.attachments) return [];
+        else return this.entry.attachments;
     }
 
     short_body() {
@@ -779,6 +834,28 @@ class EntryView {
 
 
         if (show_full) {
+            if (entry.has_attachments()) {
+                card.push(m("div", { class: "card-content content", style: "padding: 0" }, m("ul", 
+                    entry.get_attachments().map(function(at) {
+                        let a = [
+                            m("a", {
+                            href: "/journal/files/attachments/"
+                                  + at.local_filename },
+                            at.local_thumb_filename
+                            ? (m("img", { src: "/journal/files/attachments/" + at.local_thumb_filename }))
+                            : ("[" + at.id + "] - " + at.name)),
+                        ];
+                        if (vn.state.show_upload) {
+                            a.unshift(
+                                m("button", { class: btn_class,
+                                              onclick: function() { entry.ask_del_attachment(at.id, at.name) } },
+                                    "Delete " + at.id));
+                        }
+                        return m("li", a);
+                    })
+                )));
+            }
+
             card.push(m("div", { class: "card-content",
                                  style: "padding: 0" },
                 m("div", { class: "is-size-7 has-background-light columns", style: "margin: 0" }, [
@@ -805,10 +882,10 @@ class EntryView {
                               onclick: function() { entry.add_todo() } },
                     "Todo"),
                 m("button", { class: "button is-outlined is-link" ,
-                              onclick: function() { vn.state.show_ent_link_copy = true; } },
+                              onclick: function() { vn.state.show_ent_link_copy = !vn.state.show_ent_link_copy; } },
                     "Ent"),
                 m("button", { class: "button is-outlined is-link" ,
-                              onclick: function() { vn.state.show_upload = true; } },
+                              onclick: function() { vn.state.show_upload = !vn.state.show_upload; } },
                     "Upl"),
             ];
             if (vn.state.show_ent_link_copy) {
@@ -819,24 +896,54 @@ class EntryView {
                             vn.state.show_ent_link_copy = null; } }));
             }
             if (vn.state.show_upload) {
-                actions.push(
-                    m("div", [
-                        m("input", { type: "file", onchange: function(e) {
-                            e.preventDefault();
-                            let fi = e.target.files;
-                            do_upload(vn.attrs.entry_id, fi, function() {
-                                vn.state.show_upload = false;
-                            });
-                        } }),
-                        m("input", { style: "width: 2rem", type: "text",
+                let upl = [];
+                if (vn.state.upload_perc != null) {
+                    upl.push(m("progress", { class: "progress is-primary", value: vn.state.upload_perc, max: "100" },
+                        "" + vn.state.upload_perc + "%"));
+                } else {
+                    upl.push(
+                        m("div", { class: "control" },
+                        m("div", { class: "file" },
+                            m("label", { class: "file-label" }, [
+                                m("input", { class: "file-input", type: "file", onchange: function(e) {
+                                    e.preventDefault();
+                                    let fi = e.target.files;
+                                    vn.state.upload_perc = 0;
+                                    do_upload(vn.attrs.entry_id, fi[0], function() {
+                                        vn.state.show_upload = false;
+                                        entry.refresh_attachments();
+                                        vn.state.upload_perc = null;
+                                    }, function(p) {
+                                        vn.state.upload_perc = p;
+                                    });
+                                } }),
+                                m("span", { class: "file-cta" }, [
+                                    m("span", { class: "file-icon" },
+                                        m("i", { class: "fas fa-upload" })),
+                                    m("span", { class: "file-label" },
+                                        "Choose a file..."),
+                                ]),
+                            ])
+                        )));
+                    upl.push(
+                        m("div", { class: "control" },
+                        m("input", { class: "input", style: "width: 5rem", type: "text",
+                                     placeholder: "paste",
                                      onpaste: function(e) {
                             e.preventDefault();
                             let fi = e.clipboardData.files;
-                            do_upload(vn.attrs.entry_id, fi, function() {
+                            vn.state.upload_perc = 0;
+                            do_upload(vn.attrs.entry_id, fi[0], function() {
                                 vn.state.show_upload = false;
+                                entry.refresh_attachments();
+                                vn.state.upload_perc = null;
+                            }, function(p) {
+                                vn.state.upload_perc = p;
                             });
-                        } }),
-                    ]));
+                        } })));
+                }
+                card.push(m("div", { class: "card-content", style: "padding: 0" },
+                    m("div", { class: "field has-addons", }, upl)));
             }
 
             card.push(
@@ -867,26 +974,63 @@ class EntryView {
     }
 };
 
-function do_upload(entry_id, fi, cb) {
-    console.log("OF", fi[0]);
-    let name = fi[0].name;
-    let type = fi[0].type;
+//let slice_size = 1000 * 1024;
+let slice_size = 256 * 1024;
+
+function do_upload(entry_id, file, cb, pcb) {
+    let name = file.name;
+    let type = file.type;
     let r = new FileReader();
-    r.onload = function(e) {
-        upload_file(entry_id, name, type, e.target.result, cb);
+
+    let meta = {
+        entry_id: entry_id,
+        name: name,
+        type: type,
     };
-    r.readAsDataURL(fi[0]);
+
+    upload_slice(r, file, meta, 0, cb, pcb);
 }
 
-function upload_file(entry_id, filename, mime, dataurl, cb) {
-    console.log("UPLOAD", [entry_id, filename, mime, dataurl]);
-    m.request({
-        method: "POST",
-        url: "/journal/fileupload/" + entry_id,
-        body: { name: filename, type: mime, data: dataurl },
-    }).then(function(data) {
-        if (cb) cb();
-    }).catch(http_err);
+function upload_slice(r, file, meta, offset, cb, pcb) {
+    let next_offset = offset + slice_size + 1;
+    let blob = file.slice(offset, next_offset);
+
+    r.onloadend = function(e) {
+        if (e.target.readyState != FileReader.DONE) {
+            return;
+        }
+
+        meta.data = e.target.result;
+
+        let url_part = "fileupload/" + meta.entry_id;
+        if (offset > 0) { url_part = "sliceupload/" + meta.at_id }
+
+        m.request({
+            method: "POST",
+            url: "/journal/" + url_part,
+            body: meta,
+        }).then(function(data) {
+            if (offset <= 0) {
+                meta.at_id = data[0];
+            }
+            if (next_offset < file.size) {
+                upload_slice(r, file, meta, next_offset, cb, pcb);
+                let percent = Math.floor((offset / file.size) * 100);
+                if (pcb) pcb(percent);
+            } else {
+                if (pcb) pcb(100);
+                m.request({
+                    method: "GET",
+                    url: "/journal/trigger_attachment_thumb/" + meta.at_id,
+                    body: meta,
+                }).then(function() {
+                    if (cb) cb();
+                });
+            }
+        }).catch(http_err);
+    };
+
+    r.readAsDataURL(blob);
 }
 
 function search(stxt, cb) {

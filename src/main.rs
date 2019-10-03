@@ -146,6 +146,50 @@ fn start_wlambda_thread() -> threads::Sender {
             }, Some(2), Some(2));
 
         genv.borrow_mut().add_func(
+            "make_webdata_thumbnail",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                let n     = String::from("webdata/") + &env.arg(0).s_raw();
+                let n_out = String::from("webdata/") + &env.arg(1).s_raw();
+
+                let mut convert = std::process::Command::new("convert");
+                if let Err(e) =
+                    convert.arg("-resize").arg("200x100")
+                           .arg(n.to_string()).arg(n_out).output() {
+                    return Ok(VVal::err_msg(
+                        &format!("Couldn't resize image {}: {}", n, e)));
+                }
+
+                return Ok(VVal::Bol(true));
+            }, Some(2), Some(2));
+
+        genv.borrow_mut().add_func(
+            "append_webdata",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                use std::fs::OpenOptions;
+                use std::io::prelude::*;
+                let n = env.arg(0).s_raw();
+                let d = env.arg(1);
+
+                let f = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .open(String::from("webdata/") + &n);
+                if let Err(e) = f {
+                    return Ok(VVal::err_msg(
+                        &format!("Couldn't open file webdata/{}: {}", n, e)));
+                };
+                let mut f = f.unwrap();
+                if let VVal::Byt(b) = d {
+                    println!("appended {}: bytes {}", n, b.borrow().len());
+                    if let Err(e) = f.write_all(&b.borrow()[..]) {
+                        return Ok(VVal::err_msg(
+                            &format!("Couldn't open file webdata/{}: {}", n, e)));
+                    }
+                }
+                return Ok(VVal::Bol(true));
+            }, Some(2), Some(2));
+
+        genv.borrow_mut().add_func(
             "b64:decode",
             |env: &mut wlambda::vval::Env, _argc: usize| {
                 use base64::decode;
@@ -192,7 +236,11 @@ fn start_wlambda_thread() -> threads::Sender {
                         WLContext { db_con: None })));
 
         match wl_eval_ctx.eval_file("main.wl") {
-            Ok(_) => (),
+            Ok(v) => {
+                if v.is_err() {
+                    panic!(format!("'main.wl' SCRIPT ERROR: {}", v.s()));
+                }
+            },
             Err(e) => { panic!(format!("'main.wl' SCRIPT ERROR: {}", e)); }
         }
 
@@ -205,9 +253,13 @@ fn start_wlambda_thread() -> threads::Sender {
 #[allow(dead_code)]
 fn mime_for_ext(s: &str) -> String {
     String::from(
-        match s {
+        match &s.to_lowercase()[..] {
             "css"   => "text/css",
             "js"    => "text/javascript",
+            "png"   => "image/png",
+            "jpg"   => "image/jpeg",
+            "jpeg"  => "image/jpeg",
+            "gif"   => "image/gif",
             "json"  => "application/json",
             "html"  => "text/html",
             _       => "text/plain",

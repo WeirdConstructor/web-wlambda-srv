@@ -35,22 +35,76 @@
             $q"^GET:/journal/search/last", {||
                 return :from_req get_search[];
             },
+            $q"^GET:/journal/attachments/(\d+)", {||
+                return :from_req ~
+                    db:exec "SELECT * FROM attachments WHERE entry_id=?" _.1;
+            },
             $q"^GET:/journal/search/entries/recent", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries e
                                ORDER BY mtime DESC, id DESC
                                LIMIT 25";
             },
+            $q"^GET:/journal/trigger_attachment_thumb/(\d+)", {||
+                !at = db:exec "SELECT * FROM attachments WHERE id=?" _.1
+                    | _? :from_req;
+                !local_filename_thumb =
+                    std:str:cat at.0.entry_id "_tb_" at.0.id "_" at.0.name;
+                std:re:match "^image/" at.0.type {||
+                    make_webdata_thumbnail
+                        (std:str:cat "attachments/" at.0.local_filename)
+                        (std:str:cat "attachments/" local_filename_thumb)
+                        | _? :from_req;
+                    db:exec
+                        "UPDATE attachments SET local_thumb_filename=? WHERE id=?"
+                            local_filename_thumb at.0.id
+                        | _? :from_req;
+                };
+                return :from_req ~ $["ok", at];
+            },
+            $q"^GET:/journal/deleteupload/(\d+)", {||
+                db:exec "DELETE FROM attachments WHERE id=?" _.1 | _? :from_req;
+                return :from_req ~ $["ok"];
+            },
+            $q"^POST:/journal/sliceupload/(\d+)", {||
+                !at = _? :from_req ~ db:exec
+                    "SELECT local_filename FROM attachments WHERE id=?" _.1;
+                (is_some at.0.local_filename) {
+                    !d = data.data;
+                    std:re:match $q$;base64,(.*)$ d {
+                        _? :from_req ~
+                            append_webdata
+                                (std:str:cat "attachments/" at.0.local_filename)
+                                (b64:decode _.1);
+                    };
+                };
+                return :from_req ~ $[_.1];
+            },
             $q"^POST:/journal/fileupload/(\d+)", {||
                 !entry_id = _.1;
+
+                _? :from_req ~ db:exec
+                    "INSERT INTO attachments (entry_id, name, type) VALUES(?, ?, ?)"
+                    entry_id data.name data.type;
+
+                !at_id = _? :from_req ~
+                    db:exec "SELECT MAX(id) AS new_at_id FROM attachments";
+
+                !local_filename =
+                    std:str:cat entry_id "_" at_id.0.new_at_id "_" data.name;
+
+                _? :from_req ~ db:exec
+                    "UPDATE attachments SET local_filename=? WHERE id=?"
+                        local_filename at_id.0.new_at_id;
+
                 !d = data.data;
                 std:re:match $q$;base64,(.*)$ d {
                     _? :from_req ~
                         write_webdata
-                            (std:str:cat entry_id "_" data.name)
+                            (std:str:cat "attachments/" local_filename)
                             (b64:decode _.1);
                 };
-                return :from_req ~ $["ok"];
+                return :from_req ~ $[at_id.0.new_at_id];
             },
             $q"^POST:/journal/search/entries", {||
                 save_search data.search;
@@ -159,8 +213,14 @@
     };
 
     (is_err data) {
-        std:displayln :ERROR " " data;
-        (is_map ~ unwrap_err data) { unwrap_err data } { data };
+        std:displayln :ERROR " " (unwrap_err data | str);
+        (is_map ~ unwrap_err data) { unwrap_err data } {
+            ${
+                status       = 500,
+                content_type = "text/plain",
+                body         = unwrap_err data,
+            }
+        };
     } { ${ data = data } };
 };
 
@@ -207,11 +267,34 @@
         );
     ";
 
-    !r = db:exec "SELECT value FROM system WHERE key=?" :version;
-    std:displayln "* db version = " r.0.value;
+    !r = unwrap ~ db:exec "SELECT value FROM system WHERE key=?" :version;
+    !version = r.0.value;
+    std:displayln "* db version = " version;
     (not r) {
-        db:exec "INSERT INTO system (key, value) VALUES(?, ?)" :version "1";
+        unwrap ~ db:exec "INSERT INTO system (key, value) VALUES(?, ?)" :version "1";
     } {
+        !new_version = $&$n;
+
+        (version == "1") {
+            .new_version = "2";
+            unwrap ~ db:exec $q"
+                CREATE TABLE IF NOT EXISTS attachments (
+                    id INTEGER PRIMARY KEY,
+                    entry_id INTEGER,
+                    upload_time TEXT NOT NULL DEFAULT (datetime('now')),
+                    type TEXT,
+                    name TEXT,
+                    local_filename TEXT,
+                    local_thumb_filename TEXT,
+                    FOREIGN KEY (entry_id) REFERENCES entries(id)
+                );
+            ";
+        };
+
+        (is_some $*new_version) {
+            db:exec "UPDATE system SET value=? WHERE key=?" new_version :version;
+            std:displayln "UPDATED DATABASE FROM " version " to " new_version;
+        };
     };
 };
 
