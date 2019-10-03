@@ -154,6 +154,7 @@ fn start_wlambda_thread() -> threads::Sender {
                 let mut convert = std::process::Command::new("convert");
                 if let Err(e) =
                     convert.arg("-resize").arg("200x100")
+                           .arg("-auto-orient")
                            .arg(n.to_string()).arg(n_out).output() {
                     return Ok(VVal::err_msg(
                         &format!("Couldn't resize image {}: {}", n, e)));
@@ -330,7 +331,8 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
     let mut response = Response::new(Body::empty());
 
     let method : hyper::Method = req.method().clone();
-    let path   = String::from(req.uri().path());
+    let path = String::from(req.uri().path());
+    let path = percent_encoding::percent_decode_str(&path).decode_utf8_lossy().to_string();
     let p : &str = &path;
 
     let authenticated =
