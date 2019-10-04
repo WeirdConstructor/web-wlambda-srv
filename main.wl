@@ -154,12 +154,13 @@
                 !diff = text_diff old.0.body data.body;
                 !hist_num =
                     db:exec
-                        "SELECT hist_num FROM history WHERE entry_id=?" entry_id
+                        "SELECT MAX(hist_num) AS hist_num FROM history WHERE entry_id=?" entry_id
                     | _? :from_req;
                 !out_hist_num = $&$n;
                 (is_some hist_num)
                     { .out_hist_num = hist_num.0.hist_num + 1 }
                     { .out_hist_num = 1 };
+                std:displayln :FFFFF " " $*out_hist_num;
                 db:exec
                     $q$
                         INSERT INTO history (entry_id, hist_num, tags, body, mtime)
