@@ -100,7 +100,19 @@
     ${ sql = std:str:join " " sql, binds = binds }
 };
 
-
+!@export diff2txt { !diff = _;
+    diff \:r { !(idx, ch, l) = _;
+        ch == $n {
+            return :r ~ std:str:cat "= " l;
+        };
+        ch == $f {
+            return :r ~ std:str:cat "- " l;
+        };
+        ch == $t {
+            return :r ~ std:str:cat "+ " l;
+        };
+    } | std:str:join "\n"
+};
 
 #!@export search_to_sql {
 #    !or         = parse_search _;

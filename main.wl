@@ -1,5 +1,4 @@
 !@import u util;
-
 !@import a auth;
 
 !:global auth_realm     = \ "wctor_journal" ;
@@ -135,6 +134,7 @@
                 !entry_id = _.1;
                 std:displayln "DATA SAVE:" _ data;
 
+                # check whether the to be saved entry is out of date:
                 (not ~ is_none data.mtime) {
                     !mt =_? :from_req ~
                         db:exec $q"SELECT id, mtime FROM entries WHERE
@@ -148,6 +148,26 @@
                     }
                 };
 
+                # save diff to history:
+                !old = db:exec "SELECT * FROM entries WHERE id=?" entry_id
+                    | _? :from_req;
+                !diff = text_diff old.0.body data.body;
+                !hist_num =
+                    db:exec
+                        "SELECT hist_num FROM history WHERE entry_id=?" entry_id
+                    | _? :from_req;
+                !out_hist_num = $&$n;
+                (is_some hist_num)
+                    { .out_hist_num = hist_num.0.hist_num + 1 }
+                    { .out_hist_num = 1 };
+                db:exec
+                    $q$
+                        INSERT INTO history (entry_id, hist_num, tags, body, mtime)
+                        VALUES(?, ?, ?, ?, ?)
+                    $ entry_id $*out_hist_num old.0.tags (u:diff2txt diff) old.0.mtime
+                | _? :from_req;
+
+                # update entry:
                 _? :from_req ~
                     db:exec
                         "UPDATE entries SET tags=?,body=?,deleted=?,mtime=datetime('now') WHERE id=?"
@@ -155,6 +175,8 @@
                         data.body
                         (is_none data.deleted)[{ 0 }, { data.deleted }]
                         entry_id;
+
+                # recreate tag structure:
                 !tag_vec = parse_tags data.tags;
                 !tag_ids = tag_vec {
                     _? :from_req ~
@@ -290,6 +312,21 @@
                 );
             ";
         };
+
+        (version == "2") {
+            .new_version = "3";
+            unwrap ~ db:exec $q"
+                CREATE TABLE IF NOT EXISTS history (
+                    entry_id INTEGER,
+                    hist_num INTEGER,
+                    mtime TEXT NOT NULL DEFAULT (datetime('now')),
+                    tags TEXT,
+                    body TEXT,
+                    FOREIGN KEY (entry_id) REFERENCES entries(id),
+                    PRIMARY KEY (entry_id, hist_num)
+                );
+            ";
+        }
 
         (is_some $*new_version) {
             db:exec "UPDATE system SET value=? WHERE key=?" new_version :version;

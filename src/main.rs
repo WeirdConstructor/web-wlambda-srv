@@ -125,6 +125,47 @@ fn start_wlambda_thread() -> threads::Sender {
             }, Some(1), Some(1));
 
         genv.borrow_mut().add_func(
+            "text_diff",
+            |env: &mut wlambda::vval::Env, _argc: usize| {
+                use std::convert::TryFrom;
+                let l = env.arg(0).s_raw();
+                let r = env.arg(1).s_raw();
+
+                let v = VVal::vec();
+
+                let mut left_line_nr : usize = 1;
+                for diff in diff::lines(&l, &r) {
+                    match diff {
+                        diff::Result::Left(l) => {
+                            let ent = VVal::vec();
+                            ent.push(VVal::Int(i64::try_from(left_line_nr).unwrap_or(-1)));
+                            ent.push(VVal::Bol(false));
+                            ent.push(VVal::new_str(l));
+                            v.push(ent);
+                            left_line_nr += 1;
+                        },
+                        diff::Result::Both(l, _) => {
+                            let ent = VVal::vec();
+                            ent.push(VVal::Int(i64::try_from(left_line_nr).unwrap_or(-1)));
+                            ent.push(VVal::Nul);
+                            ent.push(VVal::new_str(l));
+                            v.push(ent);
+                            left_line_nr += 1;
+                        },
+                        diff::Result::Right(l) => {
+                            let ent = VVal::vec();
+                            ent.push(VVal::Int(i64::try_from(left_line_nr).unwrap_or(-1)));
+                            ent.push(VVal::Bol(true));
+                            ent.push(VVal::new_str(l));
+                            v.push(ent);
+                        },
+                    }
+                }
+
+                return Ok(v);
+            }, Some(2), Some(2));
+
+        genv.borrow_mut().add_func(
             "write_webdata",
             |env: &mut wlambda::vval::Env, _argc: usize| {
                 use std::io::prelude::*;

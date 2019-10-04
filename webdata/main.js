@@ -225,7 +225,7 @@ let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
 class Entry {
     constructor(id, entry) {
-        console.log("CONSTRUCT", [id, entry]);
+        //d// console.log("CONSTRUCT", [id, entry]);
         if (entry) {
             this.set_entry(entry)
         } else {
@@ -349,15 +349,35 @@ class Entry {
     }
 
     add_todo() {
-        let d = new Date();
-        // TODO:
-        // - [ ] Aufbrechen in blöcke die aus normal-lines und todo-lines bestehen
-        // - [ ] blöcke analysieren, ob sie unfertige todos enthalten.
-        // - [ ] letzten block nehmen und appenden
-        // - [ ] alle blöcke zusammenfügen mit "\n"
-        this.make_sure_newline_at_end();
-        this.entry.body += "- [ ] \n";
-        this.changed = true;
+        let self = this;
+
+        self.make_sure_newline_at_end();
+        let lines = self.entry.body.split(/\r?\n/);
+        let out = [];
+        let is_todo_block = null;
+        let last_padding = "";
+        let pushed = false;
+
+        lines.map(function(l) {
+            if (pushed) { out.push(l); return; }
+            let m = l.match(/^(\s*)- \[[ x]\] /);
+            if (m) {
+                is_todo_block = true;
+                last_padding = m[1];
+            } else {
+                if (is_todo_block) {
+                    out.push(last_padding + "- [ ] ");
+                    pushed = true;
+                }
+            }
+            out.push(l);
+        });
+
+        if (!pushed)
+            out.push("- [ ] ");
+
+        self.entry.body = out.join("\n");
+        self.changed = true;
     }
 
     save(done_cb) {
