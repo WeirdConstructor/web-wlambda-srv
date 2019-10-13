@@ -119,7 +119,9 @@ function get_day_fmt(d) {
 
 function get_day(offset) {
     let d = new Date();
-    if (offset != null) {
+    if ((typeof offset) == "object")
+        d = offset;
+    else if (offset != null) {
         d.setDate(d.getDate() + offset);
     }
     return get_day_fmt(d);
@@ -142,7 +144,8 @@ function goto_entry_and_edit(id) {
 
 function goto_entry(id) {
     m.route.set("/entry/:id", { id: id });
-    document.getElementById("top").scrollIntoView();
+    let te = document.getElementById("top");
+    if (te) te.scrollIntoView();
 }
 
 function get_recent_entries() {
@@ -151,6 +154,7 @@ function get_recent_entries() {
         if (data == null) { data = []; }
         recent_entries = data;
 
+        console.log("RECENT ENTREIS");
         if (recent_entries.length > 0 && current_entry_id == null) {
             goto_entry(get_recent_valid_entry_id());
         }
@@ -1068,6 +1072,21 @@ function search(stxt, cb) {
     }).catch(http_err);
 }
 
+function get_week_fmt(offs) {
+    if (offs == null) offs = 0;
+    let week_date = new Date();
+    if ((typeof offs) == "object") {
+        week_date = offs;
+        offs = 0;
+    }
+
+    week_date.setDate(week_date.getDate() + (offs * 7));
+    return (
+        padl("" + (week_date.getYear() + 1900), "0", 4)
+        + "-kw"   + padl("" + week_date.getWeek(), "0", 2)
+    );
+}
+
 class SearchColumn {
     do_search(vn, srchtxt) {
         search(srchtxt, function(ents) {
@@ -1097,8 +1116,7 @@ class SearchColumn {
                 let d = new Date();
                 return (
                     "t_old "
-                    + padl("" + (d.getYear() + 1900), "0", 4)
-                    + "-kw" + padl("" + (d.getWeek()), "0", 2)
+                    + get_week_fmt()
                     + " | " + get_day());
             } },
             { name: "complete week",search: function() {
@@ -1111,8 +1129,7 @@ class SearchColumn {
                     week_dates += get_day_fmt(d);
                     d.setDate(d.getDate() + 1);
                 }
-                week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
-                            + "-kw"   + padl("" + ((new Date()).getWeek()), "0", 2);
+                week_dates += " | " + get_week_fmt();
                 return "t_new " + week_dates + " | weekly review";
             } },
             { name: "complete last week",search: function() {
@@ -1125,14 +1142,12 @@ class SearchColumn {
                     week_dates += get_day_fmt(d);
                     d.setDate(d.getDate() + 1);
                 }
-                week_dates += " | " + padl("" + (d.getYear() + 1900), "0", 4)
-                            + "-kw"   + padl("" + ((new Date()).getWeek() - 1), "0", 2);
+                week_dates += " | " + get_week_fmt(-1);
                 return "t_new " + week_dates + " | weekly review";
             } },
             { name: "week",         search: function() {
                 let d = new Date();
-                return (     padl("" + (d.getYear() + 1900), "0", 4)
-                    + "-kw" + padl("" + (d.getWeek()), "0", 2));
+                return get_week_fmt();
             } },
             { name: "month",        search: function() {
                 let d = new Date();
@@ -1310,12 +1325,9 @@ class ModalView {
 //};
 
 var RecentEntries = {
-    oninit: function(vn) {
-        if (!recent_entries) {
-            get_recent_entries();
-        }
-    },
     view: function(vn) {
+        if (!recent_entries)
+            get_recent_entries();
         if (recent_entries) {
             return m("div", {},
                 recent_entries.filter(e => !e.deleted).map(function(e) {
@@ -1347,6 +1359,122 @@ class ClipboardText {
         ]);
     }
 };
+
+function date_for_week(year, week) {
+    let d = new Date(year, 0, 1);
+    d.setDate(d.getDate() + (week - 1) * 7);
+    d.setDate(d.getDate() - (d.getDay() - 1));
+    return d;
+}
+
+let WEEK_DAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+class WeekView {
+    view(vn) {
+        let kwmatch = vn.attrs.week.match(/^(\d+)-kw(\d+)$/);
+        if (!kwmatch) return m("span", "INVALID WEEK: " + vn.attrs.week);
+
+        let week_offs = vn.attrs.offs;
+        if (week_offs == null) week_offs = 0;
+
+        let today_fmt = get_day_fmt(new Date);
+        let this_week_fmt = get_week_fmt(new Date);
+
+        let d = date_for_week(
+            parseInt(kwmatch[1]),
+            parseInt(kwmatch[2]) + week_offs);
+        let week_fmt = get_week_fmt(d);
+
+        let search_str = week_fmt;
+        let col_heads = [];
+        for (let i = 0; i < 7; i++) {
+            let x = new Date(d.getYear() + 1900, d.getMonth(), d.getDate());
+            x.setDate(x.getDate() + i);
+            let clr_style = "";
+            if (today_fmt == get_day_fmt(x))
+                clr_style = "background-color: #ffaaaa";
+
+            col_heads.push(m("th",
+                { class: "is-clipped", style: clr_style },
+                WEEK_DAYS[x.getDay()] + " "
+                + get_day_fmt(x).replace("" + (x.getYear() + 1900) + "-", "")));
+            search_str += " | " + get_day_fmt(x);
+        }
+        let tbl_rows = [];
+        col_heads.unshift(m("th", { style: "background-color: #eef" }, week_fmt));
+        tbl_rows.push(m("tr", col_heads));
+
+        if (!vn.state.search_started || vn.state.searched != search_str) {
+            console.log("SEARCH", search_str);
+            vn.state.search_started = true;
+            vn.state.searched = search_str;
+            search(search_str, function(resp) {
+                console.log("entries", resp);
+                vn.state.entries = resp;
+            });
+        }
+
+        if (vn.state.entries) {
+            let ents = [];
+            let kw = week_fmt;
+            let kwents = [];
+            vn.state.entries.map(function(e) {
+                if (e.tags.indexOf(kw) >= 0) {
+                    let eid = e.id;
+                    kwents.push(m("a",
+                        { style: "font-weight: bold",
+                          href: "#!/entry/" + e.id,
+                          alt: "entry " + e.id },
+                        e.tags));
+                }
+            });
+            ents.push(m("td", { class: "is-clipped", style: "background-color: #eef" }, kwents));
+
+
+            for (let i = 0; i < 7; i++) {
+                let x = new Date(d.getYear() + 1900, d.getMonth(), d.getDate());
+                x.setDate(x.getDate() + i);
+                let fd = get_day_fmt(x);
+                let entries_for_this_day = [];
+                vn.state.entries.map(function(e) {
+                    if (e.tags.indexOf(fd) >= 0) {
+                        let eid = e.id;
+                        entries_for_this_day.push(m("a",
+                            { style: "font-weight: bold",
+                              href: "#!/entry/" + e.id,
+                              alt: "entry " + e.id },
+                            e.tags.replace("" + (x.getYear() + 1900) + "-", "")));
+                    }
+                });
+
+                let clr_style = "";
+                if (today_fmt == fd)
+                    clr_style = "; background-color: #ffaaaa";
+
+                if (entries_for_this_day.length <= 0) {
+                    entries_for_this_day.push(
+                        m("a", { class: "button is-small is-success is-outlined is-light",
+                                 onclick: function(ev) { open_diary(x); } },
+                            "+"));
+                }
+                ents.push(m("td", { class: "is-clipped", style: "padding: 0.1rem" + clr_style },
+                            entries_for_this_day));
+            }
+            tbl_rows.push(m("tr", ents));
+        }
+
+        let tbl_clr_style = "";
+        if (this_week_fmt == week_fmt)
+            tbl_clr_style = "; background-color: #fff";
+        else
+            tbl_clr_style = "; background-color: #eee";
+
+        return (m("div", { class: "table-container" },
+            m("table", { class: "table is-striped is-narrow is-fullwidth is-bordered is-size-7",
+                         style: "min-width: 300px; table-layout: fixed" + tbl_clr_style },
+                         tbl_rows)));
+    }
+}
 
 class NavbarView {
     view(vn) {
@@ -1384,6 +1512,12 @@ class NavbarView {
                             m("a", { class: "button is-light",
                                      onclick: function(ev) { open_diary(1); } },
                                 "Diary+1"),
+                            m("a", { class: "button is-light",
+                                     href: "#!/week/" + padl("" + get_week_fmt(), "0", 2) },
+                                "Week"),
+                            m("a", { class: "button is-light",
+                                     href: "#!/week/" + padl("" + get_week_fmt(-1), "0", 2) },
+                                "Last Week"),
                             m("a", { class: "button is-link",
                                      onclick: function(ev) {
                                         document.getElementById("search").scrollIntoView();
@@ -1399,12 +1533,19 @@ class NavbarView {
 }
 
 var TopLevel = {
-    oninit: function(vn) {
-        get_recent_entries();
-    },
     view: function(vn) {
         if (vn.attrs.id != null) {
             current_entry_id = vn.attrs.id;
+
+        } else if (vn.attrs.week != null) {
+            return m("div", { id: "top" }, [
+                m(NavbarView),
+                m("section", { class: "section", style: "padding-top: 0.5rem" }, [
+                    m(WeekView, { week: vn.attrs.week, offs: -1 }),
+                    m(WeekView, { week: vn.attrs.week, }),
+                    m(WeekView, { week: vn.attrs.week, offs: +1 }),
+                ])
+            ]);
         }
 
         return m("div", { id: "top" }, [
@@ -1454,6 +1595,7 @@ document.addEventListener("keypress", function(e) {
 });
 
 m.route(document.body, '/main', {
-    '/main': TopLevel,
-    '/entry/:id': TopLevel,
+    '/main':        TopLevel,
+    '/week/:week':  TopLevel,
+    '/entry/:id':   TopLevel,
 });
