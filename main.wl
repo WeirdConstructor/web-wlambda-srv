@@ -59,11 +59,11 @@
                             local_filename_thumb at.0.id
                         | _? :from_req;
                 };
-                return :from_req ~ $["ok", at];
+                return :from_req $["ok", at];
             },
             $q"^GET:/journal/deleteupload/(\d+)", {||
                 db:exec "DELETE FROM attachments WHERE id=?" _.1 | _? :from_req;
-                return :from_req ~ $["ok"];
+                return :from_req $["ok"];
             },
             $q"^POST:/journal/sliceupload/(\d+)", {||
                 !at = _? :from_req ~ db:exec
@@ -77,7 +77,7 @@
                                 (b64:decode _.1);
                     };
                 };
-                return :from_req ~ $[_.1];
+                return :from_req $[_.1];
             },
             $q"^POST:/journal/fileupload/(\d+)", {||
                 !entry_id = _.1;
