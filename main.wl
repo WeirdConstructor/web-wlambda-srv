@@ -41,6 +41,7 @@
             $q"^GET:/journal/search/entries/recent", {||
                 return :from_req ~
                     db:exec $q"SELECT * FROM entries e
+                               WHERE deleted=0
                                ORDER BY mtime DESC, id DESC
                                LIMIT 25";
             },

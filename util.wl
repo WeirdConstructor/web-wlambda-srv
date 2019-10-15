@@ -50,12 +50,14 @@
 
     !p = std:push;
     !i = 0;
-    p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND ";
+    p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND (";
+    !got_or_term = $&$f;
     p sql ~ _.or_terms {
         !or = $[];
+        .got_or_term = $t;
         p or "(ex.id IN (";
         p or "SELECT e.id FROM entries e";
-        !where = $[];
+        !where = $["(e.deleted=0)"];
         _ {
             !(typ, s) = _;
             .i = i + 1;
@@ -82,6 +84,10 @@
         p or "))";
         std:str:join " " or
     } | std:str:join " OR ";
+
+    (not $*got_or_term) \p sql "1=1";
+
+    p sql ")";
 
     !order = _.order;
     (not ~ is_none order) {
