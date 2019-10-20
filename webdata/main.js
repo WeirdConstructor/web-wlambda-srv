@@ -557,6 +557,16 @@ class Entry {
         lblbtns.push(
             m("button", { class: "button is-small",
                           onclick: function() {
+                                vn.state.lbl_selected = ["+", "+", null] } },
+               "[+]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["-", "-", null] } },
+               "[-]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
                                 vn.state.lbl_selected = ["X", null, null] } },
                "[X]"));
         lblbtns.push(
@@ -609,6 +619,18 @@ class Entry {
                                    e.preventDefault();
                                    if (vn.state.lbl_selected[1] == null) {
                                        table_struct.data[col_idx][row_idx] = null;
+                                   } else if (vn.state.lbl_selected[1] == "+") {
+                                       let last = null;
+                                       for (let i = row_idx; i < table_struct.data[col_idx].length; i++) {
+                                          let next_last = table_struct.data[col_idx][i];
+                                          table_struct.data[col_idx][i] = last;
+                                          last = next_last;
+                                       }
+                                   } else if (vn.state.lbl_selected[1] == "-") {
+                                       for (let i = row_idx; i < table_struct.data[col_idx].length; i++) {
+                                          let next = table_struct.data[col_idx][i + 1];
+                                          table_struct.data[col_idx][i] = next;
+                                       }
                                    } else if (vn.state.lbl_selected[1] == "pick") {
                                        vn.state.lbl_selected = [cell[0], cell[2], cell[1]];
                                    } else if (vn.state.lbl_selected[1] == "pickup") {
@@ -1425,7 +1447,7 @@ class WeekView {
                         { style: "font-weight: bold",
                           href: "#!/entry/" + e.id,
                           alt: "entry " + e.id },
-                        e.tags));
+                        "[" + e.tags + "]"));
                 }
             });
             ents.push(m("td", { class: "is-clipped", style: "background-color: #eef" }, kwents));
@@ -1443,7 +1465,7 @@ class WeekView {
                             { style: "font-weight: bold",
                               href: "#!/entry/" + e.id,
                               alt: "entry " + e.id },
-                            e.tags.replace("" + (x.getYear() + 1900) + "-", "")));
+                            "[" + e.tags.replace("" + (x.getYear() + 1900) + "-", "") + "] "));
                     }
                 });
 
