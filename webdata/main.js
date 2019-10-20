@@ -61,8 +61,17 @@ renderer.link = function(href, title, text) {
     if (m) {
         return "<a href=\"#!/entry/" + m[1] + "\" alt=\"entry " + m[1] + "\">[entry " + m[1]  + "]</a>";
     } else {
-        return "<a href=\"" + href + "\" alt=\"" + title + "\">" + text + "</a>";
+        m = href.match(/^attach:(\d+)_tb_(.*)$/);
+        if (m) {
+            return (
+                "<a href=\"/journal/files/attachments/" + m[1] + "_" + m[2] + "\">"
+                + "<img src=\"/journal/files/attachments/" + m[1] + "_tb_" + m[2] + "\">"
+                + "</a>");
+        } else {
+            return "<a href=\"" + href + "\" alt=\"" + title + "\">" + text + "</a>";
+        }
     }
+
 };
 
 renderer.listitem = function(text, task, checked) {
@@ -922,7 +931,7 @@ class EntryView {
 
         if (show_full) {
             if (entry.has_attachments()) {
-                card.push(m("div", { class: "card-content content", style: "padding: 0" }, m("ul", 
+                card.push(m("div", { class: "card-content content", style: "padding: 0" }, [m("hr"), m("div", 
                     entry.get_attachments().map(function(at) {
                         let a = [
                             m("a", {
@@ -933,14 +942,17 @@ class EntryView {
                             : ("[" + at.id + "] - " + at.name)),
                         ];
                         if (vn.state.show_upload) {
-                            a.unshift(
+                            a.push(m("br"));
+                            a.push(m("span", "<attach:" + at.local_thumb_filename + ">"));
+                            a.push(m("br"));
+                            a.push(
                                 m("button", { class: btn_class,
                                               onclick: function() { entry.ask_del_attachment(at.id, at.name) } },
                                     "Delete " + at.id));
                         }
-                        return m("li", a);
+                        return m("div", { style: "padding: 0.5rem", class: "is-inline-block" },  a);
                     })
-                )));
+                )]));
             }
 
             card.push(m("div", { class: "card-content",
