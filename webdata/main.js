@@ -557,16 +557,6 @@ class Entry {
         lblbtns.push(
             m("button", { class: "button is-small",
                           onclick: function() {
-                                vn.state.lbl_selected = ["+", "+", null] } },
-               "[+]"));
-        lblbtns.push(
-            m("button", { class: "button is-small",
-                          onclick: function() {
-                                vn.state.lbl_selected = ["-", "-", null] } },
-               "[-]"));
-        lblbtns.push(
-            m("button", { class: "button is-small",
-                          onclick: function() {
                                 vn.state.lbl_selected = ["X", null, null] } },
                "[X]"));
         lblbtns.push(
@@ -579,6 +569,26 @@ class Entry {
                           onclick: function() {
                                 vn.state.lbl_selected = ["P", "pickup", null] } },
                "[R]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["+", "+", null] } },
+               "[+]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["-", "-", null] } },
+               "[-]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["+B", "+B", null] } },
+               "[+B]"));
+        lblbtns.push(
+            m("button", { class: "button is-small",
+                          onclick: function() {
+                                vn.state.lbl_selected = ["-B", "-B", null] } },
+               "[-B]"));
 
         table_struct.labels.map(function(l) {
             let lbl = l[0];
@@ -617,10 +627,31 @@ class Entry {
                                  href: "#!",
                                  onclick: function(e) {
                                    e.preventDefault();
-                                   if (vn.state.lbl_selected[1] == null) {
-                                       table_struct.data[col_idx][row_idx] = null;
+                                   let shift = e.shiftKey;
+
+                                   if (vn.state.lbl_selected[1] == "+B") {
+                                       let last = null;
+                                       let found_block = false;
+                                       if (shift) last = table_struct.data[col_idx][row_idx];
+                                       for (let i = row_idx; i < table_struct.data[col_idx].length; i++) {
+                                          let next_last = table_struct.data[col_idx][i];
+                                          table_struct.data[col_idx][i] = last;
+                                          last = next_last;
+                                          if (last != null) found_block = true;
+                                          if (found_block && last == null) break;
+                                       }
+                                   } else if (vn.state.lbl_selected[1] == "-B") {
+                                       let found_block = false;
+                                       for (let i = row_idx; i < table_struct.data[col_idx].length; i++) {
+                                          let next = table_struct.data[col_idx][i + 1];
+                                          if (table_struct.data[col_idx][i] != null)
+                                              found_block = true;
+                                          table_struct.data[col_idx][i] = next;
+                                          if (found_block && next == null) break;
+                                       }
                                    } else if (vn.state.lbl_selected[1] == "+") {
                                        let last = null;
+                                       if (shift) last = table_struct.data[col_idx][row_idx];
                                        for (let i = row_idx; i < table_struct.data[col_idx].length; i++) {
                                           let next_last = table_struct.data[col_idx][i];
                                           table_struct.data[col_idx][i] = last;
@@ -632,10 +663,15 @@ class Entry {
                                           table_struct.data[col_idx][i] = next;
                                        }
                                    } else if (vn.state.lbl_selected[1] == "pick") {
-                                       vn.state.lbl_selected = [cell[0], cell[2], cell[1]];
+                                       if (cell) vn.state.lbl_selected = [cell[0], cell[2], cell[1]];
+                                       else      vn.state.lbl_selected = ["X", null, null];
+
                                    } else if (vn.state.lbl_selected[1] == "pickup") {
-                                       vn.state.lbl_selected = [cell[0], cell[2], cell[1], "pickup"];
-                                       table_struct.data[col_idx][row_idx] = null;
+                                       if (cell) {
+                                           vn.state.lbl_selected = [cell[0], cell[2], cell[1], "pickup"];
+                                           table_struct.data[col_idx][row_idx] = null;
+                                       }
+
                                    } else {
                                        let sel = vn.state.lbl_selected;
                                        if (vn.state.lbl_selected[3] == "pickup") {
@@ -645,8 +681,13 @@ class Entry {
                                                vn.state.lbl_selected = [cell[0], cell[2], cell[1], "pickup"];
                                            }
                                        }
-                                       table_struct.data[col_idx][row_idx] =
-                                           [sel[0], sel[2], sel[1]];
+                                       if (shift) {
+                                           if (cell) vn.state.lbl_selected = [cell[0], cell[2], cell[1]];
+                                           else      vn.state.lbl_selected = ["X", null, null];
+                                       } else {
+                                           if (sel[1] == null) table_struct.data[col_idx][row_idx] = null;
+                                           else                table_struct.data[col_idx][row_idx] = [sel[0], sel[2], sel[1]];
+                                       }
                                    }
                                    self.set_table(table_struct);
                                  } }, "*"));
