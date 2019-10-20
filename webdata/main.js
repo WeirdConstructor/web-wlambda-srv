@@ -1430,13 +1430,17 @@ class WeekView {
             console.log("SEARCH", search_str);
             vn.state.search_started = true;
             vn.state.searched = search_str;
+            vn.state.search_done = false;
             search(search_str, function(resp) {
                 console.log("entries", resp);
+                vn.state.search_done = true;
                 vn.state.entries = resp;
             });
         }
 
-        if (vn.state.entries) {
+        if (vn.state.search_done) {
+            if (!vn.state.entries) { vn.state.entries = []; }
+
             let ents = [];
             let kw = week_fmt;
             let kwents = [];
