@@ -18,7 +18,18 @@ Date.prototype.getWeek = function() {
 }
 
 
-HTMLTextAreaElement.prototype.insertAtCaret = function (text) {
+HTMLTextAreaElement.prototype.withCaretDo = function (cb) {
+  if (this.selectionStart || this.selectionStart === 0) {
+    // Others
+    var startPos = this.selectionStart;
+    var endPos = this.selectionEnd;
+    let len = cb(startPos, endPos);
+    this.selectionStart = startPos + len;
+    this.selectionEnd = startPos + len;
+  }
+};
+
+HTMLTextAreaElement.prototype.insertAtCaret = function (text, removeLeft) {
   text = text || '';
   if (document.selection) {
     // IE
@@ -28,6 +39,9 @@ HTMLTextAreaElement.prototype.insertAtCaret = function (text) {
   } else if (this.selectionStart || this.selectionStart === 0) {
     // Others
     var startPos = this.selectionStart;
+    if (removeLeft) {
+        startPos += removeLeft;
+    }
     var endPos = this.selectionEnd;
     this.value = this.value.substring(0, startPos) +
       text +
@@ -254,6 +268,18 @@ function get_entry_by_id(id) {
     return entries[id];
 }
 
+function get_timestamp() {
+    let d = new Date();
+    return (
+                padl("" + (d.getYear() + 1900),"0", 4)
+        + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
+        + "-" + padl("" + (d.getDate()),       "0", 2)
+        + " " + padl("" + (d.getHours()),      "0", 2)
+        + ":" + padl("" + (d.getMinutes()),    "0", 2)
+        + ":" + padl("" + (d.getSeconds()),    "0", 2));
+}
+
+
 let checkbox_re = /-\s+\[.\]\s+(.*)/g;
 let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -/;
 let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
@@ -340,7 +366,7 @@ class Entry {
     }
 
     set_checkbox(idx, text, checked) {
-        let ts = this.get_timestamp();
+        let ts = get_timestamp();
         let i = 0;
         this.entry.body = this.entry.body.replace(checkbox_re, function(l, txt) {
             if (idx == i) {
@@ -372,15 +398,18 @@ class Entry {
         this.changed = true;
     }
 
-    get_timestamp() {
+    add_now() {
         let d = new Date();
-        return (
-                    padl("" + (d.getYear() + 1900),"0", 4)
-            + "-" + padl("" + (d.getMonth() + 1),  "0", 2)
-            + "-" + padl("" + (d.getDate()),       "0", 2)
-            + " " + padl("" + (d.getHours()),      "0", 2)
-            + ":" + padl("" + (d.getMinutes()),    "0", 2)
-            + ":" + padl("" + (d.getSeconds()),    "0", 2));
+        this.make_sure_newline_at_end();
+        this.entry.body += "- " + get_timestamp() + ": \n";
+        this.changed = true;
+    }
+
+    add_tbl() {
+        let d = new Date();
+        this.make_sure_newline_at_end();
+        this.entry.body += "| | |\n|-|-|\n| | |\n";
+        this.changed = true;
     }
 
     add_todo() {
@@ -1002,6 +1031,12 @@ class EntryView {
                 m("button", { class: btn_class,
                               onclick: function() { entry.add_todo() } },
                     "Todo"),
+                m("button", { class: btn_class,
+                              onclick: function() { entry.add_now() } },
+                    "Now"),
+                m("button", { class: btn_class,
+                              onclick: function() { entry.add_tbl() } },
+                    "Tbl"),
                 m("button", { class: "button is-outlined is-link" ,
                               onclick: function() { vn.state.show_ent_link_copy = !vn.state.show_ent_link_copy; } },
                     "Ent"),
@@ -1666,7 +1701,8 @@ var TopLevel = {
     },
 };
 
-document.addEventListener("keypress", function(e) {
+let LAST_KEYS = "";
+document.addEventListener("keydown", function(e) {
     if (e.getModifierState("Control")) {
         switch (e.key) {
             case "Enter":
@@ -1691,6 +1727,26 @@ document.addEventListener("keypress", function(e) {
                     e.preventDefault();
                 }
                 break;
+        }
+    } else {
+        if (LAST_KEYS.length >= 3) {
+            LAST_KEYS = LAST_KEYS.substr(LAST_KEYS.length - 2);
+        }
+        LAST_KEYS = LAST_KEYS + e.key;
+        let el = document.activeElement;
+        if (!el) return;
+        if (LAST_KEYS == "##n") {
+            el.insertAtCaret("- " + get_timestamp() + ": ", -2);
+            e.preventDefault();
+
+        } else if (LAST_KEYS == "##i") {
+            el.insertAtCaret("- [ ] ", -2);
+            e.preventDefault();
+
+        } else if (LAST_KEYS == "##t") {
+            el.insertAtCaret("| | |\n|-|-|\n| | |", -2);
+            e.preventDefault();
+
         }
     }
 });
