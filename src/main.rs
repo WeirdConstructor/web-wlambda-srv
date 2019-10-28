@@ -14,6 +14,7 @@ use futures::future::lazy;
 //use tokio::timer::Interval;
 //use tokio::io;
 
+use url::Url;
 use hyper::{Body, Request, Response, Server, Method, StatusCode};
 use hyper::rt::{Future, Stream};
 use hyper::service::service_fn;
@@ -331,11 +332,25 @@ fn parse_basic_auth(header: &str) -> VVal {
 fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
     let gr_snd = snd.clone();
-    let get_response = move |method: String, path: String, data: VVal| {
+    let get_response = move |method: String, path: String, data: VVal, url: String| {
         let v = VVal::vec();
         v.push(VVal::new_str_mv(method));
         v.push(VVal::new_str_mv(path));
         v.push(data);
+
+        if let Ok(url_obj) = Url::parse(&url) {
+            let qp = VVal::map();
+            for (key, value) in url_obj.query_pairs() {
+                qp.set_map_key(key.to_string(), VVal::new_str_mv(value.to_string()));
+            }
+
+            v.push(VVal::new_str_mv(url));
+            v.push(qp);
+        } else {
+            v.push(VVal::new_str_mv(url));
+            v.push(VVal::Nul);
+        }
+
         gr_snd.call("req", v)
     };
 
@@ -371,6 +386,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
 
     let mut response = Response::new(Body::empty());
 
+    let uri = req.uri().to_string();
     let method : hyper::Method = req.method().clone();
     let path = String::from(req.uri().path());
     let path = percent_encoding::percent_decode_str(&path).decode_utf8_lossy().to_string();
@@ -449,7 +465,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                 }
             } else {
                 apply_response(
-                    get_response(format!("{:?}", method), spath, VVal::Nul),
+                    get_response(format!("{:?}", method), spath, VVal::Nul, uri),
                     &mut response);
             }
         },
@@ -462,7 +478,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                         match serde_json::from_str::<VVal>(&b) {
                             Ok(v) => {
                                 apply_response(
-                                    get_response(format!("{:?}", method), spath, v),
+                                    get_response(format!("{:?}", method), spath, v, uri),
                                     &mut response);
                             },
                             Err(_) => {

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 wlambda       = { path = "../wlambda" }
 hyper         = "0.12.29"
-#url           = "2.1.0"
+url           = "2.1.0"
 percent-encoding = "2.1.0"
 serde         = "1.0.92"
 futures       = "0.1"
