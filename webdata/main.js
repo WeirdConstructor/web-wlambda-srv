@@ -1,9 +1,8 @@
 "use strict";
 
-
 // This script is released to the public domain and may be used, modified and
 // distributed without restrictions. Attribution not necessary but appreciated.
-// Source: http://weeknumber.net/how-to/javascript 
+// Source: https://weeknumber.net/how-to/javascript
 
 // Returns the ISO week of the date.
 Date.prototype.getWeek = function() {
@@ -14,7 +13,15 @@ Date.prototype.getWeek = function() {
   // January 4 is always in week 1.
   var week1 = new Date(date.getFullYear(), 0, 4);
   // Adjust to Thursday in week 1 and count number of weeks from date to week1.
-  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000
+                        - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
+// Returns the four-digit year corresponding to the ISO week of the date.
+Date.prototype.getWeekYear = function() {
+  var date = new Date(this.getTime());
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  return date.getFullYear();
 }
 
 
@@ -1204,19 +1211,31 @@ function search(stxt, cb) {
     }).catch(http_err);
 }
 
-function get_week_fmt(offs) {
+function get_week_fmt(offs, wkd) {
     if (offs == null) offs = 0;
     let week_date = new Date();
+    if (wkd) week_date = wkd;
     if ((typeof offs) == "object") {
         week_date = offs;
         offs = 0;
     }
 
     week_date.setDate(week_date.getDate() + (offs * 7));
-    return (
-        padl("" + (week_date.getYear() + 1900), "0", 4)
+    let out = (
+        padl("" + (week_date.getWeekYear()), "0", 4)
         + "-kw"   + padl("" + week_date.getWeek(), "0", 2)
     );
+    return out;
+}
+
+function get_week_offs_fmt(week_str, offs) {
+    let kwmatch = week_str.match(/^(\d+)-kw(\d+)$/);
+    if (!kwmatch) return null;
+
+    let d = date_for_week(
+        parseInt(kwmatch[1]),
+        parseInt(kwmatch[2]));
+    return get_week_fmt(offs, d);
 }
 
 class SearchColumn {
@@ -1297,7 +1316,7 @@ class SearchColumn {
                     d.setDate(d.getDate() + 1);
                 }
                 month_str += " | " + week_ary.map(function(d) {
-                    return (     padl("" + (d.getYear() + 1900), "0", 4)
+                    return (     padl("" + (d.getWeekYear() + 1900), "0", 4)
                     + "-kw" + padl("" + (d.getWeek()), "0", 2));
                 }).join(" | ");
                 return "t_new " + month_str;
@@ -1676,10 +1695,17 @@ var TopLevel = {
         } else if (vn.attrs.week != null) {
             return m("div", { id: "top" }, [
                 m(NavbarView),
+                m("a", { class: "button is-light",
+                         href: "#!/week/" + padl("" + get_week_offs_fmt(vn.attrs.week, -2), "0", 2) },
+                    "Week-2"),
+                m("a", { class: "button is-light",
+                         href: "#!/week/" + padl("" + get_week_offs_fmt(vn.attrs.week, +2), "0", 2) },
+                    "Week+2"),
                 m("section", { class: "section", style: "padding-top: 0.5rem" }, [
                     m(WeekView, { week: vn.attrs.week, offs: -1 }),
                     m(WeekView, { week: vn.attrs.week, }),
                     m(WeekView, { week: vn.attrs.week, offs: +1 }),
+                    m(WeekView, { week: vn.attrs.week, offs: +2 }),
                 ])
             ]);
         }

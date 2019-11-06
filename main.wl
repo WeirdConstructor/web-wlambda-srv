@@ -26,7 +26,7 @@
 };
 
 !:global req = {
-    !(method, path, data) = @;
+    !(method, path, data, url, qp) = @;
 
     !data = block :from_req {
         !t = std:str:cat method ":" path;
