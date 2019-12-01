@@ -288,7 +288,7 @@ function get_timestamp() {
 
 
 let checkbox_re = /-\s+\[.\]\s+(.*)/g;
-let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -/;
+let time_log_re = /^\s+(\d+):(\d+)\s+\[\d+:\d+\] -(?:\s*([^:]+):)?/;
 let time_log_repl_re = /^(\s+\d+:\d+\s+)(\[\d+:\d+\]) -/;
 
 class Entry {
@@ -490,27 +490,56 @@ class Entry {
     }
 
     full_body()  {
+
+        let time_diff2str = function(diff, is_sum) {
+            let hours = Math.floor(diff / 60);
+            let mins = diff - hours * 60;
+            let sum = (
+                "[" + padl("" + hours, "0", 2) + ":"
+                    + padl("" + mins, "0", 2) + "]");
+            if (is_sum)
+                sum = (
+                    "[" + padl("" + hours, "0", 2) + ":"
+                        + padl("" + mins, "0", 2) + " " + (diff / 60).toFixed(2) + "]");
+            return sum;
+        };
+
         let v = this.displayed_body().split(/\n/);
         let last_time = null;
-        return v.map(function(l) {
+        let tag_times = [];
+        let log_lines = v.map(function(l) {
             let m = l.match(time_log_re);
             if (m) {
+                let tag = m[3];
                 let time = [parseInt(m[1]), parseInt(m[2])];
                 if (last_time) {
                     let last_mins_of_day = last_time[0] * 60 + last_time[1];
                     let cur_mins_of_day  = time[0] * 60 + time[1];
                     let diff = cur_mins_of_day - last_mins_of_day;
-                    let hours = Math.floor(diff / 60);
-                    let mins = diff - hours * 60;
-                    let sum = (
-                        "[" + padl("" + hours, "0", 2) + ":"
-                            + padl("" + mins, "0", 2) + "]");
+
+                    let tt = tag_times.find(function(el) { return el[0] == tag; });
+                    if (tt) tt[1] += diff;
+                    else tag_times.push([tag, diff]);
+
+                    let sum = time_diff2str(diff);
                     l = l.replace(time_log_repl_re, "$1" + sum + " -");
                 }
                 last_time = time;
             }
             return l;
-        }).join("\n")
+        }).join("\n");
+
+        let sum_defined = 0;
+        let sum         = 0;
+        log_lines += "\n    \n" + tag_times.map(function(tt) {
+            if (tt[0] != null && tt[0] != "P") sum_defined += tt[1];
+            sum += tt[1];
+            return "    " + time_diff2str(tt[1], true) + " - " + tt[0];
+        }).join("\n");
+        log_lines += "\n    Summe: " + time_diff2str(sum_defined, true);
+        log_lines += "\n    Tag  : " + time_diff2str(sum, true);
+
+        return log_lines;
     }
 
     refresh_attachments() {
