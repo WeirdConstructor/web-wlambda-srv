@@ -490,17 +490,19 @@ class Entry {
     }
 
     full_body()  {
-
         let time_diff2str = function(diff, is_sum) {
             let hours = Math.floor(diff / 60);
             let mins = diff - hours * 60;
             let sum = (
                 "[" + padl("" + hours, "0", 2) + ":"
                     + padl("" + mins, "0", 2) + "]");
-            if (is_sum)
+            if (is_sum) {
+                let h = padl("" + (diff / 60).toFixed(2), "0", 5);
+                h = h.replace(/\./, ",");
                 sum = (
                     "[" + padl("" + hours, "0", 2) + ":"
-                        + padl("" + mins, "0", 2) + " " + (diff / 60).toFixed(2) + "]");
+                        + padl("" + mins, "0", 2) + " " + h + "]");
+            }
             return sum;
         };
 
@@ -529,15 +531,19 @@ class Entry {
             return l;
         }).join("\n");
 
-        let sum_defined = 0;
-        let sum         = 0;
-        log_lines += "\n    \n" + tag_times.map(function(tt) {
-            if (tt[0] != null && tt[0] != "P") sum_defined += tt[1];
-            sum += tt[1];
-            return "    " + time_diff2str(tt[1], true) + " - " + tt[0];
-        }).join("\n");
-        log_lines += "\n    Summe: " + time_diff2str(sum_defined, true);
-        log_lines += "\n    Tag  : " + time_diff2str(sum, true);
+        if (tag_times.length > 0) {
+            let sum_defined = 0;
+            let sum         = 0;
+            log_lines += "\n    " + padl("", "-", 24);
+            log_lines += "\n" + tag_times.map(function(tt) {
+                if (tt[0] != null && tt[0] != "P") sum_defined += tt[1];
+                sum += tt[1];
+                return "    " + padl("" + tt[0], " ", 10) + " " + time_diff2str(tt[1], true);
+            }).join("\n");
+            log_lines += "\n    " + padl("", "-", 24);
+            log_lines += "\n    " + padl("Arbeit", " ", 10) + " " + time_diff2str(sum_defined, true);
+            log_lines += "\n    " + padl("Tag", " ", 10) + " " + time_diff2str(sum, true);
+        }
 
         return log_lines;
     }
