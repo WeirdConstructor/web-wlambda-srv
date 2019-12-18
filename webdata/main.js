@@ -1813,12 +1813,14 @@ var TopPublic = {
         return m("div", { id: "top" }, [
             m("section", { class: "section", style: "padding-top: 0.5rem" }, [
                 m(ModalView),
-                m("div", { class: "columns is-3" }, [
-                    m("div", { class: "column" },  [
+                m("div", { class: "columns is-12" }, [
+                    m("div", { class: "column is-2" }),
+                    m("div", { class: "column is-8" },  [
                         m(EntryView, { is_top_editor: true, entry_id: current_entry_id }),
                         m("hr"),
                         m(RecentEntries),
-                    ])
+                    ]),
+                    m("div", { class: "column is-2" }),
                 ]),
             ])
         ]);
