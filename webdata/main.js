@@ -133,6 +133,16 @@ var root = document.body;
 
 var c = 0;
 
+var public_mode = false;
+
+function jurl(path) {
+    if (public_mode) {
+        return "/journal/public" + path
+    } else {
+        return "/journal" + path
+    }
+}
+
 var recent_entries = null;
 var current_entry_id = null;
 var enable_entry_edit = false;
@@ -141,7 +151,9 @@ var modal = null;
 
 function http_err(e) {
     modal = {};
-    modal.cb = function() {};
+    modal.cb = function() {
+        if (public_mode) { m.route.set("/public"); }
+    };
     modal.text = "HTTP ERROR: " + e.message;
 }
 
@@ -195,14 +207,17 @@ function goto_entry_and_edit(id) {
 }
 
 function goto_entry(id) {
-    m.route.set("/entry/:id", { id: id });
+    if (public_mode) {
+        m.route.set("/public/entry/:id", { id: id });
+    } else {
+        m.route.set("/entry/:id", { id: id });
+    }
     let te = document.getElementById("top");
     if (te) te.scrollIntoView();
 }
 
 function get_recent_entries() {
-    m.request({ method: "GET", url: "/journal/search/entries/recent"
-    }).then(function(data) {
+    m.request({ method: "GET", url: jurl("/search/entries/recent") }).then(function(data) {
         if (data == null) { data = []; }
         recent_entries = data;
 
@@ -234,7 +249,7 @@ function open_diary(offset) {
 function new_entry(cb) {
     m.request({
         method: "POST",
-        url: "/journal/data/entries",
+        url: jurl("/data/entries"),
         body: { tags: "new", body: "" }
     }).then(function(data) {
         get_recent_entries();
@@ -316,9 +331,9 @@ class Entry {
         self.entry = { body: "loading...", tags: "loading..." };
         if (self.entry_id == id) return;
 
-        m.request({ method: "GET", url: "/journal/data/entries/" + id })
+        m.request({ method: "GET", url: jurl("/data/entries/" + id) })
          .then(function(data) {
-            self.set_entry(data);
+            self.set_entry(data ? data : {});
          }).catch(http_err);
     }
 
@@ -346,7 +361,7 @@ class Entry {
         let self = this;
         m.request({
             method: "GET",
-            url: "/journal/deleteupload/" + id,
+            url: jurl("/deleteupload/" + id),
         }).then(function() {
             self.refresh_attachments();
         }).catch(http_err);
@@ -451,12 +466,17 @@ class Entry {
         self.changed = true;
     }
 
+    toggle_public(done_cb) {
+        this.entry.is_public = !this.entry.is_public;
+        this.save(done_cb);
+    }
+
     save(done_cb) {
         let self = this;
 
         m.request({
             method: "POST",
-            url: "/journal/data/entries/" + this.entry.id,
+            url: jurl("/data/entries/" + this.entry.id),
             body: this.entry
         }).then(function(data) {
             if (data && data[2] && data[2].mtime != null) {
@@ -474,11 +494,12 @@ class Entry {
     set_tags(t) { if (this.entry.tags != t) this.changed = true; this.entry.tags = t; }
     set_body(b) { if (this.entry.body != b) this.changed = true; this.entry.body = b; }
 
-    mtime() { return this.entry.mtime }
-    ctime() { return this.entry.ctime }
-    id()    { return this.entry.id }
-    body()  { return this.entry.body }
-    tags()  { return this.entry.tags }
+    mtime()     { return this.entry.mtime }
+    ctime()     { return this.entry.ctime }
+    id()        { return this.entry.id }
+    is_public() { return this.entry.is_public }
+    body()      { return this.entry.body }
+    tags()      { return this.entry.tags }
 
     set_tags(tstr) {
         this.entry.tags = tstr;
@@ -551,12 +572,15 @@ class Entry {
     refresh_attachments() {
         let self = this;
 
+        if (self.id() == null)
+            return;
+
         if (!self.getting_attachments) {
             self.getting_attachments = true;
 
             m.request({
                 method: "GET",
-                url: "/journal/attachments/" + self.id(),
+                url: jurl("/attachments/" + self.id()),
             }).then(function(at) {
                 if (at == null) { at = []; }
                 self.entry.attachments = at;
@@ -895,6 +919,9 @@ function m_icon_btn(icon_class, cb) {
 
 class EntryView {
     m_header(vn, entry) {
+        if (!entry)
+            return m("div", "No Data");
+
         let ht = [];
         if (vn.state.edit_mode) {
             ht.push(
@@ -967,6 +994,7 @@ class EntryView {
 
         let show_full = (
             entry.is_edited_entry()
+            || public_mode
             || entry.uncommitted_changes()
             || vn.state.show_full
             || vn.state.edit_mode);
@@ -1055,11 +1083,15 @@ class EntryView {
                                style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
                         m("div", entry.id()),
                     ]),
-                    m("div", { class: "column is-5 has-text-centered",
+                    m("div", { class: "column is-2 has-text-centered",
+                               style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
+                        m("div", entry.is_public()),
+                    ]),
+                    m("div", { class: "column is-4 has-text-centered",
                                style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
                         m("div", entry.mtime()),
                     ]),
-                    m("div", { class: "column is-5 has-text-centered",
+                    m("div", { class: "column is-4 has-text-centered",
                                style: "padding-top: 0.1rem; padding-bottom: 0.1rem" }, [
                         m("div", entry.ctime()),
                     ])
@@ -1144,28 +1176,34 @@ class EntryView {
                     m("div", { class: "field has-addons", }, upl)));
             }
 
-            card.push(
-                m("footer", { class: "is-hidden-print card-footer" }, [
-                    m("div", { class: "card-footer-item is-size-7" },
-                        m("div", { class: "buttons has-addons is-centered" }, actions)),
-                    m("div", { class: "card-footer-item is-size-7" },
-                        m("div", { class: "buttons has-addons is-centered" }, [
-                            m("button", { class: btn_class,
-                                          onclick: function() { entry.save() } },
-                                "Save"),
-                            m("button", { class: btn_class,
-                                          onclick: function() {
-                                             vn.state.edit_mode = false;
-                                             vn.state.show_full = true;
-                                             entry.save()
-                                          } },
-                                "Done"),
-                        ])),
-                    m("div", { class: "card-footer-item is-size-7" },
-                        m("button", { class: btn_class,
-                                      onclick: function() { entry.ask_del() } },
-                            "Delete")),
-                ]));
+            if (!public_mode)
+                card.push(
+                    m("footer", { class: "is-hidden-print card-footer" }, [
+                        m("div", { class: "card-footer-item is-size-7" },
+                            m("div", { class: "buttons has-addons is-centered" }, actions)),
+                        m("div", { class: "card-footer-item is-size-7" },
+                            m("div", { class: "buttons has-addons is-centered" }, [
+                                m("button", { class: btn_class,
+                                              onclick: function() { entry.save() } },
+                                    "Save"),
+                                m("button", { class: btn_class,
+                                              onclick: function() {
+                                                 vn.state.edit_mode = false;
+                                                 vn.state.show_full = true;
+                                                 entry.save()
+                                              } },
+                                    "Done"),
+                            ])),
+                        m("div", { class: "card-footer-item is-size-7" },
+                            m("div", { class: "buttons has-addons is-centered" }, [
+                                m("button", { class: btn_class,
+                                              onclick: function() { entry.toggle_public() } },
+                                    (entry.is_public() ? "Make Private" : "Make Public")),
+                                m("button", { class: btn_class,
+                                              onclick: function() { entry.ask_del() } },
+                                    "Delete"),
+                            ])),
+                    ]));
         }
 
         return m("div", { class: "card", id: id }, card)
@@ -1205,7 +1243,7 @@ function upload_slice(r, file, meta, offset, cb, pcb) {
 
         m.request({
             method: "POST",
-            url: "/journal/" + url_part,
+            url: jurl("/" + url_part),
             body: meta,
         }).then(function(data) {
             if (offset <= 0) {
@@ -1219,7 +1257,7 @@ function upload_slice(r, file, meta, offset, cb, pcb) {
                 if (pcb) pcb(100);
                 m.request({
                     method: "GET",
-                    url: "/journal/trigger_attachment_thumb/" + meta.at_id,
+                    url: jurl("/trigger_attachment_thumb/" + meta.at_id),
                     body: meta,
                 }).then(function() {
                     if (cb) cb();
@@ -1234,7 +1272,7 @@ function upload_slice(r, file, meta, offset, cb, pcb) {
 function search(stxt, cb) {
     m.request({
         method: "POST",
-        url: "/journal/search/entries",
+        url: jurl("/search/entries"),
         body: { search: stxt },
     }).then(function(data) {
         self.changed = false;
@@ -1367,7 +1405,7 @@ class SearchColumn {
             vn.state.last_search_req = true;
             m.request({
                 method: "GET",
-                url: "/journal/search/last",
+                url: jurl("/search/last"),
             }).then(function(data) {
                 vn.state.input_txt = data.search;
                 self.do_search(vn, data.search);
@@ -1724,6 +1762,8 @@ class NavbarView {
 
 var TopLevel = {
     view: function(vn) {
+        public_mode = false;
+
         if (vn.attrs.id != null) {
             current_entry_id = vn.attrs.id;
 
@@ -1760,6 +1800,29 @@ var TopLevel = {
             ])
         ]);
     },
+};
+
+var TopPublic = {
+    view: function(vn) {
+        public_mode = true;
+
+        if (vn.attrs.id != null) {
+            current_entry_id = vn.attrs.id;
+        }
+
+        return m("div", { id: "top" }, [
+            m("section", { class: "section", style: "padding-top: 0.5rem" }, [
+                m(ModalView),
+                m("div", { class: "columns is-3" }, [
+                    m("div", { class: "column" },  [
+                        m(EntryView, { is_top_editor: true, entry_id: current_entry_id }),
+                        m("hr"),
+                        m(RecentEntries),
+                    ])
+                ]),
+            ])
+        ]);
+    }
 };
 
 let LAST_KEYS = "";
@@ -1812,8 +1875,3 @@ document.addEventListener("keydown", function(e) {
     }
 });
 
-m.route(document.body, '/main', {
-    '/main':        TopLevel,
-    '/week/:week':  TopLevel,
-    '/entry/:id':   TopLevel,
-});

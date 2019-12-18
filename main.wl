@@ -4,7 +4,10 @@
 !:global auth_realm     = \ "wctor_journal" ;
 !:global local_endpoint = \ "0.0.0.0:19099" ;
 !:global file_prefix    = { || "/journal/files" };
-!:global need_auth      = { || $t };
+!:global need_auth      = { ||
+    ((_1 0 16) == "/journal/public/" &or
+     (_1 0 14) == "/journal/files") { $f } { $t }
+};
 !:global auth           = { a:auth[[@]] };
 
 !parse_tags = {
@@ -34,9 +37,17 @@
             $q"^GET:/journal/search/last", {||
                 return :from_req get_search[];
             },
-            $q"^GET:/journal/attachments/(\d+)", {||
+            $q"^GET:/journal/(?:public/)?attachments/(\d+)", {||
                 return :from_req ~
                     db:exec "SELECT * FROM attachments WHERE entry_id=?" _.1;
+            },
+            $q"^GET:/journal/public/search/entries/recent", {||
+                return :from_req ~
+                    db:exec $q"SELECT * FROM entries e
+                               WHERE deleted=0
+                               AND is_public=1
+                               ORDER BY mtime DESC, id DESC
+                               LIMIT 25";
             },
             $q"^GET:/journal/search/entries/recent", {||
                 return :from_req ~
@@ -120,9 +131,21 @@
                 };
                 return :from_req ~ db:exec[[args]];
             },
+            $q"^GET:/journal/public/data/entries/(\d+)", {||
+                return :from_req ~
+                    0 ~ db:exec $q"SELECT * FROM entries WHERE id=? AND is_public=1" _.1;
+            },
             $q"^GET:/journal/data/entries/(\d+)", {||
                 return :from_req ~
                     0 ~ db:exec $q"SELECT * FROM entries WHERE id=?" _.1;
+            },
+            $q"^GET:/journal/public/data/entries", {||
+                return :from_req ~
+                    db:exec $q"SELECT * FROM entries
+                               WHERE deleted=0
+                               AND is_public=1
+                               ORDER BY id DESC
+                               LIMIT 50";
             },
             $q"^GET:/journal/data/entries", {||
                 return :from_req ~
@@ -161,7 +184,7 @@
                 (is_some hist_num)
                     { .out_hist_num = hist_num.0.hist_num + 1 }
                     { .out_hist_num = 1 };
-                std:displayln :FFFFF " " $*out_hist_num;
+
                 db:exec
                     $q$
                         INSERT INTO history (entry_id, hist_num, tags, body, mtime)
@@ -170,12 +193,14 @@
                 | _? :from_req;
 
                 # update entry:
+                std:displayln "UUUUUU " data;
                 _? :from_req ~
                     db:exec
-                        "UPDATE entries SET tags=?,body=?,deleted=?,mtime=datetime('now') WHERE id=?"
+                        "UPDATE entries SET tags=?,body=?,deleted=?,mtime=datetime('now'),is_public=? WHERE id=?"
                         data.tags
                         data.body
                         (is_none data.deleted)[{ 0 }, { data.deleted }]
+                        (bool[data.is_public] { 1 } { 0 })
                         entry_id;
 
                 # recreate tag structure:
@@ -328,7 +353,14 @@
                     PRIMARY KEY (entry_id, hist_num)
                 );
             ";
-        }
+        };
+
+        (version == "3") {
+            .new_version = "4";
+            unwrap ~ db:exec $q"
+                ALTER TABLE entries ADD is_public INTEGER DEFAULT 0
+            ";
+        };
 
         (is_some $*new_version) {
             db:exec "UPDATE system SET value=? WHERE key=?" new_version :version;
