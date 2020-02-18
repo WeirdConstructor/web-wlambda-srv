@@ -1140,7 +1140,7 @@ class EntryView {
                                     let fi = e.target.files;
                                     vn.state.upload_perc = 0;
                                     do_upload(vn.attrs.entry_id, fi[0], function() {
-                                        vn.state.show_upload = false;
+//                                        vn.state.show_upload = false;
                                         entry.refresh_attachments();
                                         vn.state.upload_perc = null;
                                     }, function(p) {
@@ -1164,7 +1164,7 @@ class EntryView {
                             let fi = e.clipboardData.files;
                             vn.state.upload_perc = 0;
                             do_upload(vn.attrs.entry_id, fi[0], function() {
-                                vn.state.show_upload = false;
+//                                vn.state.show_upload = false;
                                 entry.refresh_attachments();
                                 vn.state.upload_perc = null;
                             }, function(p) {
