@@ -35,6 +35,19 @@ struct WLContext {
     db_con: Option<sqlite::Connection>,
 }
 
+use zmq::*;
+fn start_zmq() {
+    let ctx = zmq::Context::new();
+    let mut s = ctx.socket(zmq::SUB).unwrap();
+    println!("FOO\n");
+    s.connect("tcp://home.m8geil.de:8095").unwrap();
+    s.set_subscribe(b"").unwrap();
+    loop {
+        let r = s.recv_string(0).unwrap();
+        println!("OOO:{:?}", r);
+    }
+}
+
 fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal>) -> VVal {
     let stmt = db.prepare(stmt_str.clone());
     if let Err(e) = stmt {
@@ -524,5 +537,6 @@ fn start_server() {
 }
 
 fn main() {
+//    start_zmq();
     start_server();
 }
