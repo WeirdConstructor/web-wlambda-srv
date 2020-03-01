@@ -35,18 +35,18 @@ struct WLContext {
     db_con: Option<sqlite::Connection>,
 }
 
-use zmq::*;
-fn start_zmq() {
-    let ctx = zmq::Context::new();
-    let mut s = ctx.socket(zmq::SUB).unwrap();
-    println!("FOO\n");
-    s.connect("tcp://home.m8geil.de:8095").unwrap();
-    s.set_subscribe(b"").unwrap();
-    loop {
-        let r = s.recv_string(0).unwrap();
-        println!("OOO:{:?}", r);
-    }
-}
+//use zmq::*;
+//fn start_zmq() {
+//    let ctx = zmq::Context::new();
+//    let mut s = ctx.socket(zmq::SUB).unwrap();
+//    println!("FOO\n");
+//    s.connect("tcp://home.m8geil.de:8095").unwrap();
+//    s.set_subscribe(b"").unwrap();
+//    loop {
+//        let r = s.recv_string(0).unwrap();
+//        println!("OOO:{:?}", r);
+//    }
+//}
 
 fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal>) -> VVal {
     let stmt = db.prepare(stmt_str.clone());
@@ -120,6 +120,8 @@ fn start_wlambda_thread() -> threads::Sender {
     std::thread::spawn(move || {
         let genv = GlobalEnv::new_default();
 
+        let files_path = std::rc::Rc::new(std::cell::RefCell::new(String::from("")));
+
         genv.borrow_mut().add_func(
             "db:connect_sqlite",
             |env: &mut wlambda::vval::Env, _argc: usize| {
@@ -179,32 +181,36 @@ fn start_wlambda_thread() -> threads::Sender {
                 return Ok(v);
             }, Some(2), Some(2));
 
+        let files_path1 = files_path.clone();
         genv.borrow_mut().add_func(
             "write_webdata",
-            |env: &mut wlambda::vval::Env, _argc: usize| {
+            move |env: &mut wlambda::vval::Env, _argc: usize| {
                 use std::io::prelude::*;
                 let n = env.arg(0).s_raw();
                 let d = env.arg(1);
-                let f = std::fs::File::create(String::from("webdata/") + &n);
+                let filename = files_path1.borrow().clone() + "/" + &n;
+                let f = std::fs::File::create(filename.clone());
                 if let Err(e) = f {
                     return Ok(VVal::err_msg(
-                        &format!("Couldn't open file webdata/{}: {}", n, e)));
+                        &format!("Couldn't open file {}: {}", filename, e)));
                 };
                 let mut f = f.unwrap();
                 if let VVal::Byt(b) = d {
                     if let Err(e) = f.write_all(&b.borrow()[..]) {
                         return Ok(VVal::err_msg(
-                            &format!("Couldn't open file webdata/{}: {}", n, e)));
+                            &format!("Couldn't open file {}: {}", filename, e)));
                     }
                 }
                 return Ok(VVal::Bol(true));
             }, Some(2), Some(2));
 
+        let files_path2 = files_path.clone();
         genv.borrow_mut().add_func(
             "make_webdata_thumbnail",
-            |env: &mut wlambda::vval::Env, _argc: usize| {
-                let n     = String::from("webdata/") + &env.arg(0).s_raw();
-                let n_out = String::from("webdata/") + &env.arg(1).s_raw();
+            move |env: &mut wlambda::vval::Env, _argc: usize| {
+                let fp = files_path2.borrow().clone();
+                let n     = fp.clone() + &env.arg(0).s_raw();
+                let n_out = fp         + &env.arg(1).s_raw();
 
                 let mut convert = std::process::Command::new("convert");
                 if let Err(e) =
@@ -218,28 +224,30 @@ fn start_wlambda_thread() -> threads::Sender {
                 return Ok(VVal::Bol(true));
             }, Some(2), Some(2));
 
+        let files_path3 = files_path.clone();
         genv.borrow_mut().add_func(
             "append_webdata",
-            |env: &mut wlambda::vval::Env, _argc: usize| {
+            move |env: &mut wlambda::vval::Env, _argc: usize| {
                 use std::fs::OpenOptions;
                 use std::io::prelude::*;
                 let n = env.arg(0).s_raw();
                 let d = env.arg(1);
 
+                let filepath = files_path3.borrow().clone() + &n;
                 let f = OpenOptions::new()
                     .write(true)
                     .append(true)
-                    .open(String::from("webdata/") + &n);
+                    .open(filepath.clone());
                 if let Err(e) = f {
                     return Ok(VVal::err_msg(
-                        &format!("Couldn't open file webdata/{}: {}", n, e)));
+                        &format!("Couldn't open file {}: {}", filepath, e)));
                 };
                 let mut f = f.unwrap();
                 if let VVal::Byt(b) = d {
-                    println!("appended {}: bytes {}", n, b.borrow().len());
+                    println!("appended {}: bytes {}", filepath, b.borrow().len());
                     if let Err(e) = f.write_all(&b.borrow()[..]) {
                         return Ok(VVal::err_msg(
-                            &format!("Couldn't open file webdata/{}: {}", n, e)));
+                            &format!("Couldn't open file {}: {}", filepath, e)));
                     }
                 }
                 return Ok(VVal::Bol(true));
@@ -300,6 +308,13 @@ fn start_wlambda_thread() -> threads::Sender {
             Err(e) => { panic!(format!("'main.wl' SCRIPT ERROR: {}", e)); }
         }
 
+        let r = wl_eval_ctx.eval("file_path").unwrap();
+        if r.is_none() {
+            *files_path.borrow_mut() = String::from("webdata");
+        } else {
+            *files_path.borrow_mut() = r.s_raw();
+        }
+
         msgh.run(&mut wl_eval_ctx);
     });
 
@@ -318,6 +333,7 @@ fn mime_for_ext(s: &str) -> String {
             "gif"   => "image/gif",
             "json"  => "application/json",
             "html"  => "text/html",
+            "wasm"  => "application/wasm",
             _       => "text/plain",
         }
     )
@@ -444,6 +460,14 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
             let prefix_sl = r.s_raw() + "/";
             let prefix = r.s_raw();
 
+            let r = snd.call("file_path", VVal::Nul);
+            let files_path =
+                if r.is_none() {
+                    String::from("webdata")
+                } else {
+                    r.s_raw()
+                };
+
             if path.starts_with(&prefix_sl) {
                 let webdata_path = match path.strip_prefix(&prefix) {
                     Ok(p) => p,
@@ -453,7 +477,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                     }
                 };
 
-                let mut p = PathBuf::from("webdata/");
+                let mut p = PathBuf::from(files_path + "/");
                 p.push(webdata_path);
 
                 println!("GET PATH: {:?}", &p);
