@@ -312,7 +312,7 @@ fn start_wlambda_thread() -> threads::Sender {
         if r.is_none() {
             *files_path.borrow_mut() = String::from("webdata");
         } else {
-            *files_path.borrow_mut() = r.s_raw();
+            *files_path.borrow_mut() = wl_eval_ctx.call(&r, &vec![]).unwrap().s_raw();
         }
 
         msgh.run(&mut wl_eval_ctx);
@@ -404,6 +404,15 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                     Body::from(
                         wl_resp.get_key("body").unwrap_or(VVal::Nul).s_raw());
             }
+
+        } else if wl_resp.is_err() {
+            eprintln!("ERROR RESPONSE: {}", wl_resp.s_raw());
+            *resp.status_mut() = StatusCode::from_u16(500).unwrap();
+            (*resp.headers_mut()).insert(
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_str("text/plain").unwrap());
+            *resp.body_mut() = Body::from(wl_resp.s_raw());
+
         } else {
             (*resp.headers_mut()).insert(
                 HeaderName::from_static("content-type"),

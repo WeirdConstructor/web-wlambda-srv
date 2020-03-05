@@ -4,6 +4,7 @@
 !:global auth_realm     = \ "wctor_journal" ;
 !:global local_endpoint = \ "0.0.0.0:19099" ;
 !:global file_prefix    = { || "/journal/files" };
+!:global file_path      = { || "webdata" };
 !:global need_auth      = { ||
     ((_1 0 16) == "/journal/public/" &or
      (_1 0 14) == "/journal/files") { $f } { $t }
@@ -12,9 +13,9 @@
 
 !parse_tags = {
     !tags = _;
-    tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
+    $@v tags | std:re:map $q/\s*("(.*?)"|[^,]+)\s*/ {
         !m = _;
-        (is_none m.2) { m.1 } { m.2 }
+        $+ ~ (is_none m.2) { m.1 } { m.2 };
     }
 };
 
@@ -121,7 +122,7 @@
                 save_search data.search;
                 !args = $[];
                 (not ~ is_none data.search) {
-                    !s = u:search_to_sql ~ u:parse_search data.search;
+                    !s = u:search_to_sql ~ _? :from_req ~ u:parse_search data.search;
                     std:displayln :SQL_SEARCH " " s;
                     std:push args s.sql;
                     std:append args s.binds;
@@ -180,7 +181,7 @@
                     db:exec
                         "SELECT MAX(hist_num) AS hist_num FROM history WHERE entry_id=?" entry_id
                     | _? :from_req;
-                !out_hist_num = $&$n;
+                !out_hist_num = $n;
                 (is_some hist_num)
                     { .out_hist_num = hist_num.0.hist_num + 1 }
                     { .out_hist_num = 1 };
@@ -189,7 +190,7 @@
                     $q$
                         INSERT INTO history (entry_id, hist_num, tags, body, mtime)
                         VALUES(?, ?, ?, ?, ?)
-                    $ entry_id $*out_hist_num old.0.tags (u:diff2txt diff) old.0.mtime
+                    $ entry_id out_hist_num old.0.tags (u:diff2txt diff) old.0.mtime
                 | _? :from_req;
 
                 # update entry:
@@ -205,12 +206,12 @@
 
                 # recreate tag structure:
                 !tag_vec = parse_tags data.tags;
-                !tag_ids = tag_vec {
+                !tag_ids = $@v tag_vec {
                     _? :from_req ~
                         db:exec "INSERT OR IGNORE INTO tags (name) VALUES(?)" _;
                     !r = _? :from_req ~
                         db:exec "SELECT id FROM tags WHERE name=?" _;
-                    r.(0).id
+                    $+ r.(0).id;
                 };
                 _? :from_req ~ db:exec
                     $q"DELETE FROM tag_entries WHERE entry_id=?"
@@ -238,12 +239,12 @@
                     db:exec "SELECT MAX(id) AS new_entry_id FROM entries";
                 !new_entry_id = e.(0).new_entry_id;
                 !tag_vec = parse_tags data.tags;
-                !tag_ids = tag_vec {
+                !tag_ids = $@v tag_vec {
                     _? :from_req ~
                         db:exec "INSERT OR IGNORE INTO tags (name) VALUES(?)" _;
                     !r = _? :from_req ~
                         db:exec "SELECT id FROM tags WHERE name=?" _;
-                    r.(0).id
+                    $+ r.(0).id
                 };
                 tag_ids {
                     _? :from_req ~
@@ -261,6 +262,7 @@
         $e $["No URL Handler!", t]
     };
 
+std:displayln "RET[" data "]";
     (is_err data) {
         std:displayln :ERROR " " (unwrap_err data | str);
         (is_map ~ unwrap_err data) { unwrap_err data } {

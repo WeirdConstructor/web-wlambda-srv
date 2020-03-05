@@ -13,7 +13,7 @@
     };
 };
 
-!analyze_terms = \:ret {
+!:global analyze_terms = \:ret {
     std:re:match $q/^([-+\*])(.*)$/ _ {
         !op   = _.1;
         !term = _.2;
@@ -26,7 +26,7 @@
     $[:and, _]
 };
 
-!strip_match = \:ret { !(re, text) = @;
+!:global strip_match = \:ret { !(re, text) = @;
     std:re:match re text { return :ret $[_.1, _.2] };
     $[$n, text]
 };
@@ -34,10 +34,10 @@
 !parse_search = {
     !(order_term, tags) = strip_match $q/^\s*((?:t_|c_|m_)(?:old|new))\s*(.*)$/ _;
 
-    !or_terms = tags | std:re:map $q/\s*([^\|]+)\s*/ \_.1;
-    .or_terms = or_terms { !or_term = _;
-        !and_terms = or_term | std:re:map $q/\s*([^&\s]+)\s*/ \_.1;
-        and_terms analyze_terms
+    !or_terms = $@v tags | std:re:map $q/\s*([^\|]+)\s*/ \$+ _.1;
+    .or_terms = $@v or_terms { !or_term = _;
+        !and_terms = $@v or_term | std:re:map $q/\s*([^&\s]+)\s*/ \$+ _.1;
+        $+ ~ and_terms analyze_terms;
     };
     ${ order = order_term, or_terms = or_terms }
 };
@@ -52,7 +52,7 @@
     !i = 0;
     p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND (";
     !got_or_term = $&$f;
-    p sql ~ _.or_terms {
+    p sql ~ ($@v _.or_terms {
         !or = $[];
         .got_or_term = $t;
         p or "(ex.id IN (";
@@ -82,8 +82,8 @@
         p or " WHERE ";
         p or ~ std:str:join " AND " where;
         p or "))";
-        std:str:join " " or
-    } | std:str:join " OR ";
+        $+ ~ std:str:join " " or
+    }) | std:str:join " OR ";
 
     (not $*got_or_term) \p sql "1=1";
 
@@ -106,19 +106,21 @@
     ${ sql = std:str:join " " sql, binds = binds }
 };
 
-!@export diff2txt { !diff = _;
-    diff \:r { !(idx, ch, l) = _;
+!diff2txt = { !diff = _;
+    ($@v diff { !(idx, ch, l) = _;
         ch == $n {
-            return :r ~ std:str:cat "= " l;
+            $+ ~ std:str:cat "= " l;
         };
         ch == $f {
-            return :r ~ std:str:cat "- " l;
+            $+ ~ std:str:cat "- " l;
         };
         ch == $t {
-            return :r ~ std:str:cat "+ " l;
+            $+ ~ std:str:cat "+ " l;
         };
-    } | std:str:join "\n"
+    }) | std:str:join "\n"
 };
+
+!@export diff2txt = diff2txt;
 
 #!@export search_to_sql {
 #    !or         = parse_search _;
