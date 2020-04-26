@@ -37,8 +37,9 @@
     !or_terms = $@v tags | std:re:map $q/\s*([^\|]+)\s*/ \$+ _.1;
     .or_terms = $@v or_terms { !or_term = _;
         !and_terms = $@v or_term | std:re:map $q/\s*([^&\s]+)\s*/ \$+ _.1;
-        $+ ~ and_terms analyze_terms;
+        $+ $@v and_terms \$+ ~ analyze_terms _;
     };
+    std:displayln "ORTERMS:[" or_terms "]";
     ${ order = order_term, or_terms = or_terms }
 };
 
@@ -52,14 +53,16 @@
     !i = 0;
     p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND (";
     !got_or_term = $&$f;
+    !or = $[];
     p sql ~ ($@v _.or_terms {
-        !or = $[];
         .got_or_term = $t;
         p or "(ex.id IN (";
         p or "SELECT e.id FROM entries e";
         !where = $["(e.deleted=0)"];
+        std:displayln "ORTERM[" _ "]";
         _ {
             !(typ, s) = _;
+            std:displayln "TYP S" typ ";" s;
             .i = i + 1;
             !tbl = std:str:cat "t" i;
             !tble = std:str:cat "te" i;
@@ -69,9 +72,9 @@
                 "ON " tbl ".id = " tble ".tag_id AND "
                 ~ std:str:cat "("
                     ((typ == :txt)  { std:str:cat "instr(lower(" tbl ".name || ' ' || e.body), lower(?))"; }
-                    {(typ == :not)  { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }
-                                    { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }})
-                ")";
+                        {(typ == :not)  { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }
+                                        { std:str:cat "instr(lower(" tbl ".name), lower(?))"; }})
+                  ")";
             std:push binds s;
             (typ == :not) {
                 std:push where ~ std:str:cat tbl ".id IS NULL";

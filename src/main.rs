@@ -21,6 +21,8 @@ use hyper::service::service_fn;
 use hyper::header::{HeaderName, HeaderValue};
 use futures::future;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 //use std::process::Command;
 //use tokio_process::CommandExt;
@@ -29,7 +31,7 @@ type BoxFut = Box<dyn Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 
 use wlambda;
 use wlambda::{VVal, GlobalEnv};
-use wlambda::threads;
+use wlambda::rpc_helper::*;
 
 struct WLContext {
     db_con: Option<sqlite::Connection>,
@@ -62,15 +64,15 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
         } else if b.is_int() {
             stmt.bind(i + 1, &sqlite::Value::Integer(b.i())).unwrap();
         } else if let VVal::Byt(u) = b {
-            stmt.bind(i + 1, &sqlite::Value::Binary(u.borrow().clone())).unwrap();
-        } else if let VVal::Nul = b {
+            stmt.bind(i + 1, &sqlite::Value::Binary(u.as_ref().clone())).unwrap();
+        } else if let VVal::None = b {
             stmt.bind(i + 1, &sqlite::Value::Null).unwrap();
         } else {
             stmt.bind(i + 1, &sqlite::Value::String(b.s_raw())).unwrap();
         }
     }
 
-    let mut ret = VVal::Nul;
+    let mut ret = VVal::None;
     loop {
         match stmt.next() {
             Err(e) => {
@@ -78,14 +80,14 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
                     &format!("SQL exec error on '{}': {}", stmt_str, e));
             },
             Ok(sqlite::State::Row) => {
-                if let VVal::Nul = ret {
+                if let VVal::None = ret {
                     ret = VVal::vec();
                 };
 
                 let row_vv = VVal::map();
                 for i in 0..stmt.count() {
-                    row_vv.set_map_key(
-                        stmt.name(i).to_string(),
+                    row_vv.set_key_str(
+                        &stmt.name(i).to_string(),
                         match stmt.kind(i) {
                             sqlite::Type::Integer =>
                                 VVal::Int(stmt.read::<i64>(i).unwrap()),
@@ -97,8 +99,8 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
                             sqlite::Type::String => {
                                 VVal::new_str_mv(stmt.read::<String>(i).unwrap())
                             },
-                            sqlite::Type::Null => VVal::Nul,
-                        });
+                            sqlite::Type::Null => VVal::None,
+                        }).expect("no double usage of row_vv");
                 }
 
                 ret.push(row_vv);
@@ -112,15 +114,16 @@ fn exec_sql_stmt(db: &mut sqlite::Connection, stmt_str: String, binds: &Vec<VVal
     ret
 }
 
-fn start_wlambda_thread() -> threads::Sender {
-    let mut msgh = threads::MsgHandle::new();
+fn start_wlambda_thread() -> RPCHandle {
+    let rpc_hdl = RPCHandle::new();
 
-    let sender = msgh.sender();
+    let sender = rpc_hdl.clone();
 
     std::thread::spawn(move || {
         let genv = GlobalEnv::new_default();
 
-        let files_path = std::rc::Rc::new(std::cell::RefCell::new(String::from("")));
+        let files_path =
+            Rc::new(RefCell::new(String::from("")));
 
         genv.borrow_mut().add_func(
             "db:connect_sqlite",
@@ -163,7 +166,7 @@ fn start_wlambda_thread() -> threads::Sender {
                         diff::Result::Both(l, _) => {
                             let ent = VVal::vec();
                             ent.push(VVal::Int(i64::try_from(left_line_nr).unwrap_or(-1)));
-                            ent.push(VVal::Nul);
+                            ent.push(VVal::None);
                             ent.push(VVal::new_str(l));
                             v.push(ent);
                             left_line_nr += 1;
@@ -196,7 +199,7 @@ fn start_wlambda_thread() -> threads::Sender {
                 };
                 let mut f = f.unwrap();
                 if let VVal::Byt(b) = d {
-                    if let Err(e) = f.write_all(&b.borrow()[..]) {
+                    if let Err(e) = f.write_all(&b[..]) {
                         return Ok(VVal::err_msg(
                             &format!("Couldn't open file {}: {}", filename, e)));
                     }
@@ -244,8 +247,8 @@ fn start_wlambda_thread() -> threads::Sender {
                 };
                 let mut f = f.unwrap();
                 if let VVal::Byt(b) = d {
-                    println!("appended {}: bytes {}", filepath, b.borrow().len());
-                    if let Err(e) = f.write_all(&b.borrow()[..]) {
+                    println!("appended {}: bytes {}", filepath, b.len());
+                    if let Err(e) = f.write_all(&b[..]) {
                         return Ok(VVal::err_msg(
                             &format!("Couldn't open file {}: {}", filepath, e)));
                     }
@@ -287,17 +290,10 @@ fn start_wlambda_thread() -> threads::Sender {
                 })
             }, Some(1), None);
 
-        let lfmr =
-            std::rc::Rc::new(std::cell::RefCell::new(
-                wlambda::compiler::LocalFileModuleResolver::new()));
-        genv.borrow_mut().set_resolver(lfmr);
-
         let mut wl_eval_ctx =
             wlambda::compiler::EvalContext::new_with_user(
                 genv,
-                std::rc::Rc::new(
-                    std::cell::RefCell::new(
-                        WLContext { db_con: None })));
+                Rc::new(RefCell::new(WLContext { db_con: None })));
 
         match wl_eval_ctx.eval_file("main.wl") {
             Ok(v) => {
@@ -315,7 +311,8 @@ fn start_wlambda_thread() -> threads::Sender {
             *files_path.borrow_mut() = wl_eval_ctx.call(&r, &vec![]).unwrap().s_raw();
         }
 
-        msgh.run(&mut wl_eval_ctx);
+        rpc_handler(
+            &mut wl_eval_ctx, &rpc_hdl, std::time::Duration::from_millis(500));
     });
 
     sender
@@ -346,7 +343,7 @@ fn parse_basic_auth(header: &str) -> VVal {
     let b : String = String::from(i.next().unwrap_or(""));
 
     if m != "Basic" || b.is_empty() {
-        VVal::Nul
+        VVal::None
     } else {
         let v = VVal::vec();
         v.push(VVal::new_str_mv(m));
@@ -358,7 +355,7 @@ fn parse_basic_auth(header: &str) -> VVal {
 }
 
 #[allow(dead_code)]
-fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
+fn webmain(req: Request<Body>, snd: RPCHandle) -> BoxFut {
 
     let gr_snd = snd.clone();
     let get_response = move |method: String, path: String, data: VVal, url: String| {
@@ -370,14 +367,15 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
         if let Ok(url_obj) = Url::parse(&url) {
             let qp = VVal::map();
             for (key, value) in url_obj.query_pairs() {
-                qp.set_map_key(key.to_string(), VVal::new_str_mv(value.to_string()));
+                qp.set_key_str(&key, VVal::new_str_mv(value.to_string()))
+                  .expect("no double usage of qp");
             }
 
             v.push(VVal::new_str_mv(url));
             v.push(qp);
         } else {
             v.push(VVal::new_str_mv(url));
-            v.push(VVal::Nul);
+            v.push(VVal::None);
         }
 
         gr_snd.call("req", v)
@@ -402,7 +400,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
             } else {
                 *resp.body_mut() =
                     Body::from(
-                        wl_resp.get_key("body").unwrap_or(VVal::Nul).s_raw());
+                        wl_resp.get_key("body").unwrap_or(VVal::None).s_raw());
             }
 
         } else if wl_resp.is_err() {
@@ -447,7 +445,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
         };
 
     if !authenticated {
-        let r = snd.call("auth_realm", VVal::Nul);
+        let r = snd.call("auth_realm", VVal::None);
         *response.status_mut() = StatusCode::UNAUTHORIZED;
         (*response.headers_mut()).insert(
             HeaderName::from_static("www-authenticate"),
@@ -469,7 +467,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
             let prefix_sl = r.s_raw() + "/";
             let prefix = r.s_raw();
 
-            let r = snd.call("file_path", VVal::Nul);
+            let r = snd.call("file_path", VVal::None);
             let files_path =
                 if r.is_none() {
                     String::from("webdata")
@@ -511,7 +509,7 @@ fn webmain(req: Request<Body>, snd: threads::Sender) -> BoxFut {
                 }
             } else {
                 apply_response(
-                    get_response(format!("{:?}", method), spath, VVal::Nul, uri),
+                    get_response(format!("{:?}", method), spath, VVal::None, uri),
                     &mut response);
             }
         },
@@ -551,7 +549,7 @@ fn start_server() {
     let sender = start_wlambda_thread();
 
     let sa : std::net::SocketAddr =
-        sender.call("local_endpoint", VVal::Nul).s_raw()
+        sender.call("local_endpoint", VVal::None).s_raw()
             .parse().unwrap_or(
                 "127.0.0.1:19099".parse().unwrap());
     let addr = sa.into();
