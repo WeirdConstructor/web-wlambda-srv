@@ -53,8 +53,8 @@
     !i = 0;
     p sql "SELECT * FROM entries ex WHERE ex.deleted=0 AND (";
     !got_or_term = $&$f;
-    !or = $[];
     p sql ~ ($@v _.or_terms {
+        !or = $[];
         .got_or_term = $t;
         p or "(ex.id IN (";
         p or "SELECT e.id FROM entries e";
