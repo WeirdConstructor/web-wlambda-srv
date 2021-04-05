@@ -17,10 +17,10 @@
     std:re:match $q/^([-+\*])(.*)$/ _ {
         !op   = _.1;
         !term = _.2;
-        return :ret ~ match op
-            :?s "+" {|| $[:and, term] }
-            :?s "-" {|| $[:not, term] }
-            {|| $[:txt, term] };
+        return :ret ~ match (str op)
+            "+" => { $[:and, term] }
+            "-" => { $[:not, term] }
+            { $[:txt, term] };
     };
 
     $[:and, _]
@@ -95,13 +95,13 @@
     !order = _.order;
     (not ~ is_none order) {
         p sql " ORDER BY ";
-        p sql ~ match order
-            :?s :c_old  { || std:str:cat "ctime ASC" }
-            :?s :c_new  { || std:str:cat "ctime DESC" }
-            :?s :m_old  { || std:str:cat "mtime ASC" }
-            :?s :m_new  { || std:str:cat "mtime DESC" }
-            :?s :t_old  { || std:str:cat "tags ASC" }
-            :?s :t_new  { || std:str:cat "tags DESC" };
+        p sql ~ match (sym order)
+            :c_old => { std:str:cat "ctime ASC" }
+            :c_new => { std:str:cat "ctime DESC" }
+            :m_old => { std:str:cat "mtime ASC" }
+            :m_new => { std:str:cat "mtime DESC" }
+            :t_old => { std:str:cat "tags ASC" }
+            :t_new => { std:str:cat "tags DESC" };
     };
 
     std:push sql " LIMIT 40 ";

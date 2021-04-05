@@ -2,9 +2,9 @@
 !@import a auth;
 
 !:global auth_realm     = \ "wctor_journal" ;
-!:global local_endpoint = \ "0.0.0.0:19099" ;
+!:global local_endpoint = \ "127.0.0.1:19099" ;
 !:global file_prefix    = { || "/journal/files" };
-!:global file_path      = { || "webdata" };
+!:global file_path      = { || "webdata/" };
 !:global need_auth      = { ||
     ((_1 0 16) == "/journal/public/" &or
      (_1 0 14) == "/journal/files") { $f } { $t }
@@ -62,7 +62,9 @@
                     | _? :from_req;
                 !local_filename_thumb =
                     std:str:cat at.0.entry_id "_tb_" at.0.id "_" at.0.name;
+                std:displayln "triggered thumb creation: " at;
                 std:re:match "^image/" at.0.type {||
+                    std:displayln "creating thumbnail... " local_filename_thumb;
                     make_webdata_thumbnail
                         (std:str:cat "attachments/" at.0.local_filename)
                         (std:str:cat "attachments/" local_filename_thumb)
